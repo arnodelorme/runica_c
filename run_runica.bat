@@ -12,9 +12,8 @@ if "%DATASET%"=="" set DATASET=.\data\eeglab_data
 
 REM Derived paths
 set DATAFILE=%DATASET%.fdt
-for %%F in ("%DATASET%") do set DATADIR=%%~dpF
-REM Remove trailing backslash if present
-if "%DATADIR:~-1%"=="\" set DATADIR=%DATADIR:~0,-1%
+set WEIGHTSFILE=%DATASET%.wts_win
+set SPHEREFILE=%DATASET%.sph_win
 
 echo ========================================
 echo Running runica_simple
@@ -36,7 +35,7 @@ if not exist "runica.exe" (
 
 REM Run runica
 echo Running runica.exe...
-runica.exe "%DATAFILE%" "%DATADIR%"
+runica.exe "%DATAFILE%" "%WEIGHTSFILE%" "%SPHEREFILE%"
 
 if errorlevel 1 (
     echo Error: runica.exe failed
@@ -48,8 +47,8 @@ echo ========================================
 echo All done!
 echo ========================================
 echo Output files:
-echo   Weights: %DATADIR%\weights.bin
-echo   Sphere:  %DATADIR%\sphere.bin
+echo   Weights: %WEIGHTSFILE%
+echo   Sphere:  %SPHEREFILE%
 echo.
 
 endlocal
