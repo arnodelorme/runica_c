@@ -13,6 +13,17 @@ else
     PLATFORM="$(hostname -s)"
 fi
 
+echo "$PLATFORM"
+if [ "$PLATFORM" = "MacBook-Pro-10" ]; then
+    SUFFIX="_darwin"
+else
+    if [ "$PLATFORM" = "expanse" ]; then
+        SUFFIX="_expanse"
+    else
+        SUFFIX="_linux"
+    fi
+fi
+
 # Default parameters
 DATASET=${1:-"./data/eeglab_data"}
 NCHANS=${2:-32}
@@ -22,8 +33,8 @@ DATAFILE="${DATASET}.fdt"
 SETFILE="${DATASET}.set"
 DATADIR=$(dirname "$DATASET")
 BASENAME=$(basename "$DATASET")
-WTSFILE="${DATADIR}/weights.bin"
-SPHFILE="${DATADIR}/sphere.bin"
+WTSFILE="${DATASET}.wts${SUFFIX}"
+SPHFILE="${DATASET}.sph${SUFFIX}"
 
 # MATLAB configuration
 MATLAB_BIN="/Applications/MATLAB_R2025a.app/bin/matlab"
@@ -52,7 +63,7 @@ fi
 
 # Run runica
 echo "Running runica_darwin..."
-./runica_darwin "$DATAFILE" "$DATADIR"
+./runica_darwin "$DATAFILE" "$WTSFILE" "$SPHFILE"
 
 if [ $? -ne 0 ]; then
     echo "Error: runica_darwin failed"
@@ -102,8 +113,8 @@ EEG = pop_loadset('filename', '${BASENAME}.set', 'filepath', '${DATADIR_ABS}/');
 
 % Load ICA matrices
 fprintf('Loading ICA matrices...\\n');
-wtsfile = fullfile('${DATADIR_ABS}', 'weights.bin');
-sphfile = fullfile('${DATADIR_ABS}', 'sphere.bin');
+wtsfile = fullfile('${DATADIR_ABS}', '${BASENAME}.wts${SUFFIX}');
+sphfile = fullfile('${DATADIR_ABS}', '${BASENAME}.sph${SUFFIX}');
 
 % Read weights matrix
 fid = fopen(wtsfile, 'rb');

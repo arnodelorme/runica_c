@@ -18,21 +18,21 @@ int main(int argc, char *argv[])
     double *data_double;
     double weights[NMATRIX];
     double sphere[NMATRIX];
-    char weights_file[256];
-    char sphere_file[256];
+    const char *input_file;
+    const char *weights_file;
+    const char *sphere_file;
     int i;
 
-    /* Default files */
-    const char *input_file = "data/eeglab_data.fdt";
-    const char *output_dir = "data";
+    /* Parse command line arguments */
+    if (argc < 4) {
+        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph>\n", argv[0]);
+        fprintf(stderr, "Example: %s data/eeglab_data.fdt data/eeglab_data.wts_darwin data/eeglab_data.sph_darwin\n", argv[0]);
+        return 1;
+    }
 
-    /* Allow command line override */
-    if (argc > 1) {
-        input_file = argv[1];
-    }
-    if (argc > 2) {
-        output_dir = argv[2];
-    }
+    input_file = argv[1];
+    weights_file = argv[2];
+    sphere_file = argv[3];
 
     printf("======================================\n");
     printf("Running runica_simple\n");
@@ -88,11 +88,10 @@ int main(int argc, char *argv[])
     printf("ICA completed successfully!\n\n");
 
     /* Save weights matrix */
-    snprintf(weights_file, sizeof(weights_file), "%s/weights.bin", output_dir);
     printf("Saving weights to: %s\n", weights_file);
     fp = fopen(weights_file, "wb");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot write weights file\n");
+        fprintf(stderr, "Error: Cannot write weights file: %s\n", weights_file);
         free(data_double);
         runica_simple_terminate();
         return 1;
@@ -100,12 +99,11 @@ int main(int argc, char *argv[])
     fwrite(weights, sizeof(double), NMATRIX, fp);
     fclose(fp);
 
-    /* Save sphere matrix (real part only) */
-    snprintf(sphere_file, sizeof(sphere_file), "%s/sphere.bin", output_dir);
+    /* Save sphere matrix */
     printf("Saving sphere to: %s\n", sphere_file);
     fp = fopen(sphere_file, "wb");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot write sphere file\n");
+        fprintf(stderr, "Error: Cannot write sphere file: %s\n", sphere_file);
         free(data_double);
         runica_simple_terminate();
         return 1;
