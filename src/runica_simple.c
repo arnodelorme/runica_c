@@ -1999,7 +1999,7 @@ static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
 }
 
 void runica_simple(double data[976128], double weights[1024],
-                   creal_T sphere[1024])
+                   double sphere[1024])
 {
   static double b_y[976128];
   static double x[976128];
@@ -2056,6 +2056,7 @@ void runica_simple(double data[976128], double weights[1024],
       0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52};
   creal_T b_weights[1024];
   creal_T c_weights[1024];
+  creal_T sphere_complex[1024];
   creal_T winv[1024];
   creal_T y[32];
   double dW[1024];
@@ -2168,16 +2169,16 @@ void runica_simple(double data[976128], double weights[1024],
     br += 30504;
   }
   sqrtm(dW, b_weights);
-  inv(b_weights, sphere);
+  inv(b_weights, sphere_complex);
   for (i = 0; i < 1024; i++) {
-    sphere[i].re *= 2.0;
-    sphere[i].im *= 2.0;
+    sphere_complex[i].re *= 2.0;
+    sphere_complex[i].im *= 2.0;
   }
   for (i = 0; i < 32; i++) {
     for (k = 0; k < 30504; k++) {
       weights_re_tmp = 0.0;
       for (ar = 0; ar < 32; ar++) {
-        weights_re_tmp += sphere[i + (ar << 5)].re * data[ar + (k << 5)];
+        weights_re_tmp += sphere_complex[i + (ar << 5)].re * data[ar + (k << 5)];
       }
       x[i + (k << 5)] = weights_re_tmp;
     }
@@ -2392,9 +2393,9 @@ void runica_simple(double data[976128], double weights[1024],
         idx = i + (ar << 5);
         b_dW = b_weights[idx].re;
         br = ar + (k << 5);
-        weights_re_tmp = sphere[br].im;
+        weights_re_tmp = sphere_complex[br].im;
         lrate = b_weights[idx].im;
-        oldchange = sphere[br].re;
+        oldchange = sphere_complex[br].re;
         re += b_dW * oldchange - lrate * weights_re_tmp;
         muj += b_dW * weights_re_tmp + lrate * oldchange;
       }
@@ -2481,6 +2482,10 @@ void runica_simple(double data[976128], double weights[1024],
     }
   }
   memcpy(&weights[0], &d_weights[0], 1024U * sizeof(double));
+  /* Copy real part of sphere_complex to sphere output */
+  for (i = 0; i < 1024; i++) {
+    sphere[i] = sphere_complex[i].re;
+  }
 }
 
 void runica_simple_initialize(void)

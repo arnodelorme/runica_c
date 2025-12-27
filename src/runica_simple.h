@@ -23,7 +23,7 @@ extern "C" {
 
 /* Function Declarations */
 extern void runica_simple(double data[976128], double weights[1024],
-                          creal_T sphere[1024]);
+                          double sphere[1024]);
 
 extern void runica_simple_initialize(void);
 

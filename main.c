@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
     float *data_float;
     double *data_double;
     double weights[NMATRIX];
-    creal_T sphere[NMATRIX];
+    double sphere[NMATRIX];
     char weights_file[256];
     char sphere_file[256];
     int i;
@@ -111,10 +111,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Write sphere real part only (imaginary part should be zero) */
-    for (i = 0; i < NMATRIX; i++) {
-        fwrite(&sphere[i].re, sizeof(double), 1, fp);
-    }
+    /* Write sphere matrix (now real, not complex) */
+    fwrite(sphere, sizeof(double), NMATRIX, fp);
     fclose(fp);
 
     printf("\nDone!\n");
