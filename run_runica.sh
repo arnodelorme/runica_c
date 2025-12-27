@@ -132,7 +132,7 @@ EEG = eeg_checkset(EEG);
 fprintf('Plotting component topographies...\\n');
 
 % Plot all components
-pop_topoplot(EEG, 0, [1:4], 'ICA Component Topographies (runica_c)', [], 0, 'electrodes', 'off');
+pop_topoplot(EEG, 0, [1:32], 'ICA Component Topographies (runica_c)', [], 0, 'electrodes', 'off');
 
 % Save outputs
 pngfile = fullfile('${DATADIR_ABS}', '${BASENAME}_topoplot.png');
