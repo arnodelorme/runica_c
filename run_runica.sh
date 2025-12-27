@@ -113,14 +113,13 @@ end
 weights = fread(fid, [${NCHANS}, ${NCHANS}], 'float64')';
 fclose(fid);
 
-% Read sphere matrix (complex: real and imag interleaved)
+% Read sphere matrix (real)
 fid = fopen(sphfile, 'rb');
 if fid == -1
     error('Cannot open sphere file: %s', sphfile);
 end
-sphere_data = fread(fid, [2, ${NCHANS} * ${NCHANS}], 'float64');
+sphere = fread(fid, [${NCHANS}, ${NCHANS}], 'float64')';
 fclose(fid);
-sphere = reshape(sphere_data(1,:) + 1i * sphere_data(2,:), ${NCHANS}, ${NCHANS})';
 
 % Import into EEG structure
 EEG.icaweights = weights;

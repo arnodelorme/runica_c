@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
     fwrite(weights, sizeof(double), NMATRIX, fp);
     fclose(fp);
 
-    /* Save sphere matrix (real and imaginary parts) */
+    /* Save sphere matrix (real part only) */
     snprintf(sphere_file, sizeof(sphere_file), "%s/sphere.bin", output_dir);
     printf("Saving sphere to: %s\n", sphere_file);
     fp = fopen(sphere_file, "wb");
@@ -111,16 +111,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Write sphere as pairs of (real, imag) */
+    /* Write sphere real part only (imaginary part should be zero) */
     for (i = 0; i < NMATRIX; i++) {
         fwrite(&sphere[i].re, sizeof(double), 1, fp);
-        fwrite(&sphere[i].im, sizeof(double), 1, fp);
     }
     fclose(fp);
 
     printf("\nDone!\n");
     printf("  Weights: %s (%dx%d matrix)\n", weights_file, NCHANS, NCHANS);
-    printf("  Sphere:  %s (%dx%d complex matrix)\n", sphere_file, NCHANS, NCHANS);
+    printf("  Sphere:  %s (%dx%d matrix)\n", sphere_file, NCHANS, NCHANS);
 
     /* Cleanup */
     free(data_double);
