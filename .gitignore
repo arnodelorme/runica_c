@@ -1,0 +1,29 @@
+# Build artifacts
+*.o
+obj/
+runica_darwin
+runica_linux
+runica_expanse
+
+# Output files
+data/*.bin
+data/*.wts*
+data/*.sph*
+data/*_ica.sc
+data/*_plot.m
+data/*_with_ica.set
+data/*.png
+data/*.pdf
+
+# IDE
+.vscode/
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# MATLAB
+*.asv
+*.m~
