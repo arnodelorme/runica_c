@@ -617,7 +617,7 @@ static void randperm(double *p, int samples)
     int j;
     i2 = i << 1;
     j = 1;
-    for (pEnd = i + 1; pEnd <= samples + 1; pEnd = qEnd + i) {
+    for (pEnd = i + 1; pEnd < samples + 1; pEnd = qEnd + i) {
       int b_p;
       int kEnd;
       int q;
@@ -2026,7 +2026,7 @@ void runica_simple(double *data, double *weights, double *sphere,
   const int ndata = nchan * samples;
   const int nmatrix = nchan * nchan;
   const int block = 52;
-  const int nblocks = (samples + block - 1) / block;
+  const int nblocks = samples / block;  /* Floor division */
   const int xb_size = nchan * (samples - nchan);
 
   /* Large arrays - dynamically allocated */
@@ -2036,6 +2036,10 @@ void runica_simple(double *data, double *weights, double *sphere,
   double *tmp_data = (double *)malloc(xb_size * sizeof(double));
   double *timeperm = (double *)malloc(samples * sizeof(double));
 
+
+  /* Initialize arrays to zero to match static array behavior */
+  memset(Xb_data, 0, xb_size * sizeof(double));
+  memset(tmp_data, 0, xb_size * sizeof(double));
   if (!b_y || !x || !Xb_data || !tmp_data || !timeperm) {
     free(b_y); free(x); free(Xb_data); free(tmp_data); free(timeperm);
     fprintf(stderr, "Error: Failed to allocate memory in runica_simple\n");
@@ -2264,11 +2268,11 @@ void runica_simple(double *data, double *weights, double *sphere,
       wts_blowup = false;
       t = 0;
       exitg2 = false;
-      while ((!exitg2) && (t < 586)) {
+      while ((!exitg2) && (t < nblocks)) {
         double U[1664];
         double b_x[1664];
-        idx = t * 52;
-        for (j = 0; j < 52; j++) {
+        idx = t * block;
+        for (j = 0; j < block; j++) {
           br = j  * nchan;
           for (xpageoffset = 0; xpageoffset < nchan; xpageoffset++) {
             Xb_data[xpageoffset + nchan * j] =
@@ -2284,18 +2288,19 @@ void runica_simple(double *data, double *weights, double *sphere,
             }
           }
         }
-        for (i = 0; i < 52; i++) {
+        for (i = 0; i < block; i++) {
           for (k = 0; k < nchan; k++) {
             U[k + (i  * nchan)] = tmp_data[k + nchan * i] + rowmeans[k];
           }
         }
-        for (k = 0; k < 1664; k++) {
+        const int blocksize = block * nchan;
+        for (k = 0; k < blocksize; k++) {
           b_x[k] = 1.0 - 2.0 * (1.0 / (exp(-U[k]) + 1.0));
         }
         for (i = 0; i < nchan; i++) {
           for (k = 0; k < nchan; k++) {
             weights_re_tmp = 0.0;
-            for (ar = 0; ar < 52; ar++) {
+            for (ar = 0; ar < block; ar++) {
               idx = ar  * nchan;
               weights_re_tmp += b_x[i + idx] * U[k + idx];
             }
@@ -2319,13 +2324,13 @@ void runica_simple(double *data, double *weights, double *sphere,
         memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
         for (i = 0; i < nchan; i++) {
           for (k = 0; k < 52; k++) {
-            U[k + 52 * i] = b_x[i + (k  * nchan)];
+            U[k + block * i] = b_x[i + (k  * nchan)];
           }
         }
         for (j = 0; j < nchan; j++) {
-          xpageoffset = j * 52;
+          xpageoffset = j * block;
           weights_re_tmp = U[xpageoffset];
-          for (k = 0; k < 51; k++) {
+          for (k = 0; k < block - 1; k++) {
             weights_re_tmp += U[(xpageoffset + k) + 1];
           }
           rowmeans[j] += lrate * weights_re_tmp;
