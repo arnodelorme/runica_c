@@ -16,17 +16,17 @@ int main(int argc, char *argv[])
     FILE *fp;
     float *data_float;
     double *data_double;
-    double weights[NMATRIX];
-    double sphere[NMATRIX];
     const char *input_file;
     const char *weights_file;
     const char *sphere_file;
     int i;
+    int nchan = NCHANS;
+    int npoints = NPOINTS;
 
     /* Parse command line arguments */
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph>\n", argv[0]);
-        fprintf(stderr, "Example: %s data/eeglab_data.fdt data/eeglab_data.wts_darwin data/eeglab_data.sph_darwin\n", argv[0]);
+        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph> [nchans] [npoints]\n", argv[0]);
+        fprintf(stderr, "Example: %s data/eeglab_data.fdt data/eeglab_data.wts_darwin data/eeglab_data.sph_darwin 32 30504\n", argv[0]);
         return 1;
     }
 
@@ -34,17 +34,31 @@ int main(int argc, char *argv[])
     weights_file = argv[2];
     sphere_file = argv[3];
 
+    /* Optional nchan and npoints from command line */
+    if (argc >= 5) {
+        nchan = atoi(argv[4]);
+    }
+    if (argc >= 6) {
+        npoints = atoi(argv[5]);
+    }
+
+    /* Declare VLAs for weights and sphere matrices */
+    const int nmatrix = nchan * nchan;
+    const int ndata = nchan * npoints;
+    double weights[nmatrix];
+    double sphere[nmatrix];
+
     printf("======================================\n");
     printf("Running runica_simple\n");
     printf("======================================\n");
     printf("Input file: %s\n", input_file);
-    printf("Channels: %d\n", NCHANS);
-    printf("Data points: %d\n", NPOINTS);
+    printf("Channels: %d\n", nchan);
+    printf("Data points: %d\n", npoints);
     printf("\n");
 
     /* Allocate memory */
-    data_float = (float *)malloc(NDATA * sizeof(float));
-    data_double = (double *)malloc(NDATA * sizeof(double));
+    data_float = (float *)malloc(ndata * sizeof(float));
+    data_double = (double *)malloc(ndata * sizeof(double));
 
     if (!data_float || !data_double) {
         fprintf(stderr, "Error: Failed to allocate memory\n");
@@ -61,11 +75,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    size_t nread = fread(data_float, sizeof(float), NDATA, fp);
+    size_t nread = fread(data_float, sizeof(float), ndata, fp);
     fclose(fp);
 
-    if (nread != NDATA) {
-        fprintf(stderr, "Error: Expected %d values, read %zu\n", NDATA, nread);
+    if (nread != (size_t)ndata) {
+        fprintf(stderr, "Error: Expected %d values, read %zu\n", ndata, nread);
         free(data_float);
         free(data_double);
         return 1;
@@ -73,7 +87,7 @@ int main(int argc, char *argv[])
 
     /* Convert float32 to float64 */
     printf("Converting to double precision...\n");
-    for (i = 0; i < NDATA; i++) {
+    for (i = 0; i < ndata; i++) {
         data_double[i] = (double)data_float[i];
     }
     free(data_float);
@@ -83,7 +97,7 @@ int main(int argc, char *argv[])
     runica_simple_initialize();
 
     printf("Running ICA...\n");
-    runica_simple(data_double, weights, sphere);
+    runica_simple(data_double, weights, sphere, nchan, npoints);
 
     printf("ICA completed successfully!\n\n");
 
@@ -96,7 +110,7 @@ int main(int argc, char *argv[])
         runica_simple_terminate();
         return 1;
     }
-    fwrite(weights, sizeof(double), NMATRIX, fp);
+    fwrite(weights, sizeof(double), nmatrix, fp);
     fclose(fp);
 
     /* Save sphere matrix */
@@ -110,12 +124,12 @@ int main(int argc, char *argv[])
     }
 
     /* Write sphere matrix (now real, not complex) */
-    fwrite(sphere, sizeof(double), NMATRIX, fp);
+    fwrite(sphere, sizeof(double), nmatrix, fp);
     fclose(fp);
 
     printf("\nDone!\n");
-    printf("  Weights: %s (%dx%d matrix)\n", weights_file, NCHANS, NCHANS);
-    printf("  Sphere:  %s (%dx%d matrix)\n", sphere_file, NCHANS, NCHANS);
+    printf("  Weights: %s (%dx%d matrix)\n", weights_file, nchan, nchan);
+    printf("  Sphere:  %s (%dx%d matrix)\n", sphere_file, nchan, nchan);
 
     /* Cleanup */
     free(data_double);

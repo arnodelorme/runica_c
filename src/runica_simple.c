@@ -24,7 +24,7 @@ static unsigned int state[625];
 static boolean_T isInitialized_runica_simple = false;
 
 /* Function Declarations */
-static void b_rand(double r[30504]);
+static void b_rand(double *r, int samples);
 
 static void b_sqrt(creal_T *x);
 
@@ -32,11 +32,11 @@ static double b_xnrm2(int n, const double x[3]);
 
 static void c_eml_rand_mt19937ar_stateful_i(void);
 
-static void inv(const creal_T x[1024], creal_T y[1024]);
+static void inv(const creal_T *x, creal_T *y, int nchan);
 
-static void mean(const double x[976128], double y[32]);
+static void mean(const double *x, double *y, int nchan, int samples);
 
-static void randperm(double p[30504]);
+static void randperm(double *p, int samples);
 
 static double rt_atan2d_snf(double u0, double u1);
 
@@ -46,7 +46,7 @@ static void sort(creal_T x[32], int idx[32]);
 
 static boolean_T sortLE(const creal_T v[32], int idx1, int idx2);
 
-static void sqrtm(const double A[1024], creal_T X[1024]);
+static void sqrtm(const double *A, creal_T *X, int nchan);
 
 static double xdlanv2(double *a, double *b, double *c, double *d, double *rt1i,
                       double *rt2r, double *rt2i, double *cs, double *sn);
@@ -61,12 +61,12 @@ static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
                    double work[32]);
 
 /* Function Definitions */
-static void b_rand(double r[30504])
+static void b_rand(double *r, int samples)
 {
   int j;
   int k;
   int kk;
-  for (k = 0; k < 30504; k++) {
+  for (k = 0; k < samples; k++) {
     double b_r;
     /* ========================= COPYRIGHT NOTICE ============================
      */
@@ -281,8 +281,13 @@ static void c_eml_rand_mt19937ar_stateful_i(void)
   state[624] = 624U;
 }
 
-static void inv(const creal_T x[1024], creal_T y[1024])
+static void inv(const creal_T *x, creal_T *y, int nchan)
 {
+  /* TODO: Generalize to variable nchan - currently only supports nchan=32 */
+  if (nchan != 32) {
+    fprintf(stderr, "Error: inv() currently only supports nchan=32, got %d\n", nchan);
+    return;
+  }
   creal_T b_x[1024];
   double ai;
   double ar;
@@ -537,57 +542,61 @@ static void inv(const creal_T x[1024], creal_T y[1024])
   }
 }
 
-static void mean(const double x[976128], double y[32])
+static void mean(const double *x, double *y, int nchan, int samples)
 {
-  double bsum[32];
+  double *bsum = (double *)malloc(nchan * sizeof(double));
   int ib;
   int k;
   int xj;
   int xoffset;
-  memcpy(&y[0], &x[0], 32U * sizeof(double));
-  for (k = 0; k < 1023; k++) {
-    xoffset = (k + 1) << 5;
-    for (xj = 0; xj < 32; xj++) {
+
+  if (!bsum) {
+    fprintf(stderr, "Error: Failed to allocate memory in mean\n");
+    return;
+  }
+
+  /* Simple implementation: sum across samples dimension */
+  for (xj = 0; xj < nchan; xj++) {
+    y[xj] = 0.0;
+  }
+
+  for (k = 0; k < samples; k++) {
+    xoffset = k * nchan;
+    for (xj = 0; xj < nchan; xj++) {
       y[xj] += x[xoffset + xj];
     }
   }
-  for (ib = 0; ib < 29; ib++) {
-    int hi;
-    int xblockoffset;
-    xblockoffset = (ib + 1) << 15;
-    memcpy(&bsum[0], &x[xblockoffset], 32U * sizeof(double));
-    if (ib + 2 == 30) {
-      hi = 808;
-    } else {
-      hi = 1024;
-    }
-    for (k = 2; k <= hi; k++) {
-      xoffset = xblockoffset + ((k - 1) << 5);
-      for (xj = 0; xj < 32; xj++) {
-        bsum[xj] += x[xoffset + xj];
-      }
-    }
-    for (xj = 0; xj < 32; xj++) {
-      y[xj] += bsum[xj];
-    }
+
+  for (k = 0; k < nchan; k++) {
+    y[k] /= (double)samples;
   }
-  for (k = 0; k < 32; k++) {
-    y[k] /= 30504.0;
-  }
+
+  free(bsum);
 }
 
-static void randperm(double p[30504])
+static void randperm(double *p, int samples)
 {
-  static int idx[30504];
-  static int iwork[30504];
+  int *idx = (int *)malloc(samples * sizeof(int));
+  int *iwork = (int *)malloc(samples * sizeof(int));
   double d;
   int b_i;
   int i;
   int k;
   int pEnd;
   int qEnd;
-  b_rand(p);
-  for (k = 0; k <= 30502; k += 2) {
+
+  if (!idx || !iwork) {
+    free(idx);
+    free(iwork);
+    fprintf(stderr, "Error: Failed to allocate memory in randperm\n");
+    return;
+  }
+
+  b_rand(p, samples);
+
+  /* Handle odd samples case */
+  int samples_even = (samples / 2) * 2;
+  for (k = 0; k < samples_even; k += 2) {
     d = p[k + 1];
     if ((p[k] <= d) || rtIsNaN(d)) {
       idx[k] = k + 1;
@@ -597,21 +606,26 @@ static void randperm(double p[30504])
       idx[k + 1] = k + 1;
     }
   }
+  /* Handle remaining odd sample */
+  if (samples % 2 == 1) {
+    idx[samples - 1] = samples;
+  }
+
   i = 2;
-  while (i < 30504) {
+  while (i < samples) {
     int i2;
     int j;
     i2 = i << 1;
     j = 1;
-    for (pEnd = i + 1; pEnd < 30505; pEnd = qEnd + i) {
+    for (pEnd = i + 1; pEnd <= samples + 1; pEnd = qEnd + i) {
       int b_p;
       int kEnd;
       int q;
       b_p = j;
       q = pEnd - 1;
       qEnd = j + i2;
-      if (qEnd > 30505) {
-        qEnd = 30505;
+      if (qEnd > samples + 1) {
+        qEnd = samples + 1;
       }
       k = 0;
       kEnd = qEnd - j;
@@ -648,9 +662,12 @@ static void randperm(double p[30504])
     }
     i = i2;
   }
-  for (b_i = 0; b_i < 30504; b_i++) {
+  for (b_i = 0; b_i < samples; b_i++) {
     p[b_i] = idx[b_i];
   }
+
+  free(idx);
+  free(iwork);
 }
 
 static double rt_atan2d_snf(double u0, double u1)
@@ -849,8 +866,13 @@ static boolean_T sortLE(const creal_T v[32], int idx1, int idx2)
   return p;
 }
 
-static void sqrtm(const double A[1024], creal_T X[1024])
+static void sqrtm(const double *A, creal_T *X, int nchan)
 {
+  /* TODO: Generalize to variable nchan - currently only supports nchan=32 */
+  if (nchan != 32) {
+    fprintf(stderr, "Error: sqrtm() currently only supports nchan=32, got %d\n", nchan);
+    return;
+  }
   creal_T Q[1024];
   creal_T R[1024];
   creal_T T[1024];
@@ -1998,15 +2020,40 @@ static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
   }
 }
 
-void runica_simple(double data[976128], double weights[1024],
-                   double sphere[1024])
+void runica_simple(double *data, double *weights, double *sphere,
+                   int nchan, int samples)
 {
-  static double b_y[976128];
-  static double x[976128];
-  static double Xb_data[975104];
-  static double tmp_data[975104];
-  static double timeperm[30504];
-  static const signed char BI[1024] = {
+  const int ndata = nchan * samples;
+  const int nmatrix = nchan * nchan;
+  const int block = 52;
+  const int nblocks = (samples + block - 1) / block;
+  const int xb_size = nchan * (samples - nchan);
+
+  /* Large arrays - dynamically allocated */
+  double *b_y = (double *)malloc(ndata * sizeof(double));
+  double *x = (double *)malloc(ndata * sizeof(double));
+  double *Xb_data = (double *)malloc(xb_size * sizeof(double));
+  double *tmp_data = (double *)malloc(xb_size * sizeof(double));
+  double *timeperm = (double *)malloc(samples * sizeof(double));
+
+  if (!b_y || !x || !Xb_data || !tmp_data || !timeperm) {
+    free(b_y); free(x); free(Xb_data); free(tmp_data); free(timeperm);
+    fprintf(stderr, "Error: Failed to allocate memory in runica_simple\n");
+    return;
+  }
+
+  /* Stack arrays for nchan x nchan matrices */
+  double BI_d[nmatrix];  /* Will be initialized as block * I */
+  signed char BI[nmatrix];
+
+  /* Initialize BI as block * I (identity scaled by block size) */
+  memset(BI, 0, nmatrix * sizeof(signed char));
+  for (int ii = 0; ii < nchan; ii++) {
+    BI[ii + ii * nchan] = block;
+  }
+
+  /* Keep this initialization for compatibility - remove if code works without it */
+  static const signed char BI_UNUSED[1024] = {
       52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2054,23 +2101,25 @@ void runica_simple(double data[976128], double weights[1024],
       0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52};
-  creal_T b_weights[1024];
-  creal_T c_weights[1024];
-  creal_T sphere_complex[1024];
-  creal_T winv[1024];
-  creal_T y[32];
-  double dW[1024];
-  double d_weights[1024];
-  double olddelta[1024];
-  double oldweights[1024];
-  double rowmeans[32];
+  (void)BI_UNUSED;  /* Suppress unused warning */
+
+  creal_T b_weights[nmatrix];
+  creal_T c_weights[nmatrix];
+  creal_T sphere_complex[nmatrix];
+  creal_T winv[nmatrix];
+  creal_T y[nchan];
+  double dW[nmatrix];
+  double d_weights[nmatrix];
+  double olddelta[nmatrix];
+  double oldweights[nmatrix];
+  double rowmeans[nchan];
   double b_dW;
   double lrate;
   double muj;
   double oldchange;
   double re;
   double weights_re_tmp;
-  int iidx[32];
+  int iidx[nchan];
   int ar;
   int br;
   int i;
@@ -2079,7 +2128,7 @@ void runica_simple(double data[976128], double weights[1024],
   int k;
   int step;
   int xpageoffset;
-  signed char startweights[1024];
+  signed char startweights[nmatrix];
   if (!isInitialized_runica_simple) {
     runica_simple_initialize();
   }
@@ -2123,78 +2172,78 @@ void runica_simple(double data[976128], double weights[1024],
   /* if resetSeed, rand('state',sum(100*clock)); else, rand('state',0); end
    * %#ok<RAND> */
   /*  Remove channel means */
-  mean(data, rowmeans);
-  for (i = 0; i < 30504; i++) {
-    for (k = 0; k < 32; k++) {
-      idx = k + (i << 5);
+  mean(data, rowmeans, nchan, samples);
+  for (i = 0; i < samples; i++) {
+    for (k = 0; k < nchan; k++) {
+      idx = k + i * nchan;
       data[idx] -= rowmeans[k];
     }
   }
   /*  Optional PCA */
   /*  Sphering */
   /*  fprintf('Computing sphering matrix\n'); */
-  for (j = 0; j < 32; j++) {
+  for (j = 0; j < nchan; j++) {
     muj = 0.0;
-    for (xpageoffset = 0; xpageoffset < 30504; xpageoffset++) {
-      weights_re_tmp = data[j + (xpageoffset << 5)];
-      x[xpageoffset + 30504 * j] = weights_re_tmp;
+    for (xpageoffset = 0; xpageoffset < samples; xpageoffset++) {
+      weights_re_tmp = data[j + (xpageoffset  * nchan)];
+      x[xpageoffset + samples * j] = weights_re_tmp;
       muj += weights_re_tmp;
     }
-    muj /= 30504.0;
-    for (xpageoffset = 0; xpageoffset < 30504; xpageoffset++) {
-      idx = xpageoffset + 30504 * j;
+    muj /= (double)samples;
+    for (xpageoffset = 0; xpageoffset < samples; xpageoffset++) {
+      idx = xpageoffset + samples * j;
       x[idx] -= muj;
     }
   }
-  for (idx = 0; idx <= 992; idx += 32) {
+  for (idx = 0; idx <= (nchan-1)*nchan; idx += nchan) {
     i = idx + 1;
-    k = idx + 32;
+    k = idx + nchan;
     if (i <= k) {
       memset(&dW[i + -1], 0, (unsigned int)((k - i) + 1) * sizeof(double));
     }
   }
   br = -1;
-  for (idx = 0; idx <= 992; idx += 32) {
+  for (idx = 0; idx <= (nchan-1)*nchan; idx += nchan) {
     ar = -1;
     i = idx + 1;
-    k = idx + 32;
+    k = idx + nchan;
     for (j = i; j <= k; j++) {
       muj = 0.0;
-      for (xpageoffset = 0; xpageoffset < 30504; xpageoffset++) {
+      for (xpageoffset = 0; xpageoffset < samples; xpageoffset++) {
         muj += x[(xpageoffset + ar) + 1] * x[(xpageoffset + br) + 1];
       }
       dW[j - 1] += 3.2783660623545228E-5 * muj;
-      ar += 30504;
+      ar += samples;
     }
-    br += 30504;
+    br += samples;
   }
-  sqrtm(dW, b_weights);
-  inv(b_weights, sphere_complex);
-  for (i = 0; i < 1024; i++) {
+  sqrtm(dW, b_weights, nchan);
+  inv(b_weights, sphere_complex, nchan);
+  for (i = 0; i < nmatrix; i++) {
     sphere_complex[i].re *= 2.0;
     sphere_complex[i].im *= 2.0;
   }
-  for (i = 0; i < 32; i++) {
-    for (k = 0; k < 30504; k++) {
+  for (i = 0; i < nchan; i++) {
+    for (k = 0; k < samples; k++) {
       weights_re_tmp = 0.0;
-      for (ar = 0; ar < 32; ar++) {
-        weights_re_tmp += sphere_complex[i + (ar << 5)].re * data[ar + (k << 5)];
+      for (ar = 0; ar < nchan; ar++) {
+        weights_re_tmp += sphere_complex[i + (ar  * nchan)].re * data[ar + (k  * nchan)];
       }
-      x[i + (k << 5)] = weights_re_tmp;
+      x[i + (k  * nchan)] = weights_re_tmp;
     }
   }
-  memcpy(&data[0], &x[0], 976128U * sizeof(double));
+  memcpy(&data[0], &x[0], ndata * sizeof(double));
   /*  Init weights */
-  memset(&weights[0], 0, 1024U * sizeof(double));
+  memset(&weights[0], 0, nmatrix * sizeof(double));
   /*  Extended ICA configuration */
   /*  Training constants */
   lrate = 0.00018755035531556522;
-  for (k = 0; k < 32; k++) {
-    weights[k + (k << 5)] = 1.0;
+  for (k = 0; k < nchan; k++) {
+    weights[k + (k  * nchan)] = 1.0;
     rowmeans[k] = 0.0;
   }
   /*  Signs init for extended ICA */
-  for (i = 0; i < 1024; i++) {
+  for (i = 0; i < nmatrix; i++) {
     k = (int)weights[i];
     startweights[i] = (signed char)k;
     oldweights[i] = k;
@@ -2211,7 +2260,7 @@ void runica_simple(double data[976128], double weights[1024],
       int t;
       boolean_T exitg2;
       boolean_T wts_blowup;
-      randperm(timeperm);
+      randperm(timeperm, samples);
       wts_blowup = false;
       t = 0;
       exitg2 = false;
@@ -2220,60 +2269,60 @@ void runica_simple(double data[976128], double weights[1024],
         double b_x[1664];
         idx = t * 52;
         for (j = 0; j < 52; j++) {
-          br = j << 5;
-          for (xpageoffset = 0; xpageoffset < 32; xpageoffset++) {
-            Xb_data[xpageoffset + 32 * j] =
-                data[xpageoffset + (((int)timeperm[idx + j] - 1) << 5)];
+          br = j  * nchan;
+          for (xpageoffset = 0; xpageoffset < nchan; xpageoffset++) {
+            Xb_data[xpageoffset + nchan * j] =
+                data[xpageoffset + (((int)timeperm[idx + j] - 1)  * nchan)];
             tmp_data[br + xpageoffset] = 0.0;
           }
-          for (k = 0; k < 32; k++) {
-            ar = k << 5;
+          for (k = 0; k < nchan; k++) {
+            ar = k  * nchan;
             muj = Xb_data[br + k];
-            for (xpageoffset = 0; xpageoffset < 32; xpageoffset++) {
+            for (xpageoffset = 0; xpageoffset < nchan; xpageoffset++) {
               i = br + xpageoffset;
               tmp_data[i] += weights[ar + xpageoffset] * muj;
             }
           }
         }
         for (i = 0; i < 52; i++) {
-          for (k = 0; k < 32; k++) {
-            U[k + (i << 5)] = tmp_data[k + 32 * i] + rowmeans[k];
+          for (k = 0; k < nchan; k++) {
+            U[k + (i  * nchan)] = tmp_data[k + nchan * i] + rowmeans[k];
           }
         }
         for (k = 0; k < 1664; k++) {
           b_x[k] = 1.0 - 2.0 * (1.0 / (exp(-U[k]) + 1.0));
         }
-        for (i = 0; i < 32; i++) {
-          for (k = 0; k < 32; k++) {
+        for (i = 0; i < nchan; i++) {
+          for (k = 0; k < nchan; k++) {
             weights_re_tmp = 0.0;
             for (ar = 0; ar < 52; ar++) {
-              idx = ar << 5;
+              idx = ar  * nchan;
               weights_re_tmp += b_x[i + idx] * U[k + idx];
             }
-            idx = i + (k << 5);
+            idx = i + (k  * nchan);
             dW[idx] = weights_re_tmp + (double)BI[idx];
           }
         }
-        for (i = 0; i < 1024; i++) {
+        for (i = 0; i < nmatrix; i++) {
           dW[i] *= lrate;
         }
-        for (i = 0; i < 32; i++) {
-          for (k = 0; k < 32; k++) {
+        for (i = 0; i < nchan; i++) {
+          for (k = 0; k < nchan; k++) {
             weights_re_tmp = 0.0;
-            for (ar = 0; ar < 32; ar++) {
-              weights_re_tmp += dW[i + (ar << 5)] * weights[ar + (k << 5)];
+            for (ar = 0; ar < nchan; ar++) {
+              weights_re_tmp += dW[i + (ar  * nchan)] * weights[ar + (k  * nchan)];
             }
-            idx = i + (k << 5);
+            idx = i + (k  * nchan);
             d_weights[idx] = weights[idx] + weights_re_tmp;
           }
         }
-        memcpy(&weights[0], &d_weights[0], 1024U * sizeof(double));
-        for (i = 0; i < 32; i++) {
+        memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
+        for (i = 0; i < nchan; i++) {
           for (k = 0; k < 52; k++) {
-            U[k + 52 * i] = b_x[i + (k << 5)];
+            U[k + 52 * i] = b_x[i + (k  * nchan)];
           }
         }
-        for (j = 0; j < 32; j++) {
+        for (j = 0; j < nchan; j++) {
           xpageoffset = j * 52;
           weights_re_tmp = U[xpageoffset];
           for (k = 0; k < 51; k++) {
@@ -2281,7 +2330,7 @@ void runica_simple(double data[976128], double weights[1024],
           }
           rowmeans[j] += lrate * weights_re_tmp;
         }
-        for (k = 0; k < 1024; k++) {
+        for (k = 0; k < nmatrix; k++) {
           dW[k] = fabs(weights[k]);
         }
         if (!rtIsNaN(dW[0])) {
@@ -2323,18 +2372,18 @@ void runica_simple(double data[976128], double weights[1024],
       if (wts_blowup) {
         lrate *= 0.9;
         /*  fprintf('Weights blew up, restarting with lrate=%g\n', lrate); */
-        for (i = 0; i < 1024; i++) {
+        for (i = 0; i < nmatrix; i++) {
           idx = startweights[i];
           weights[i] = idx;
           oldweights[i] = idx;
         }
-        memset(&rowmeans[0], 0, 32U * sizeof(double));
+        memset(&rowmeans[0], 0, nchan * sizeof(double));
         step = 0;
       } else {
         /*  Step metrics */
         step++;
         b_dW = 0.0;
-        for (i = 0; i < 1024; i++) {
+        for (i = 0; i < nmatrix; i++) {
           weights_re_tmp = weights[i] - oldweights[i];
           dW[i] = weights_re_tmp;
           b_dW += weights_re_tmp * weights_re_tmp;
@@ -2342,7 +2391,7 @@ void runica_simple(double data[976128], double weights[1024],
         if ((step > 2) && ((!rtIsInf(oldchange)) && (!rtIsNaN(oldchange))) &&
             (oldchange > 0.0)) {
           muj = 0.0;
-          for (i = 0; i < 1024; i++) {
+          for (i = 0; i < nmatrix; i++) {
             weights_re_tmp = weights[i] - oldweights[i];
             oldweights[i] = weights_re_tmp;
             muj += weights_re_tmp * olddelta[i];
@@ -2358,10 +2407,10 @@ void runica_simple(double data[976128], double weights[1024],
         /*  Anneal */
         if (muj > 60.0) {
           lrate *= 0.9;
-          memcpy(&olddelta[0], &dW[0], 1024U * sizeof(double));
+          memcpy(&olddelta[0], &dW[0], nmatrix * sizeof(double));
           oldchange = b_dW;
         } else if (step == 1) {
-          memcpy(&olddelta[0], &dW[0], 1024U * sizeof(double));
+          memcpy(&olddelta[0], &dW[0], nmatrix * sizeof(double));
           oldchange = b_dW;
         }
         /*  Stop and blowup guard */
@@ -2371,7 +2420,7 @@ void runica_simple(double data[976128], double weights[1024],
           if (b_dW > 1.0E+9) {
             lrate *= 0.8;
           }
-          memcpy(&oldweights[0], &weights[0], 1024U * sizeof(double));
+          memcpy(&oldweights[0], &weights[0], nmatrix * sizeof(double));
         }
       }
     } else {
@@ -2381,39 +2430,39 @@ void runica_simple(double data[976128], double weights[1024],
   /*  Activations for output */
   /*  If PCA was used, compose matrices back to original channel space */
   /*  Component variance ranking */
-  for (i = 0; i < 1024; i++) {
+  for (i = 0; i < nmatrix; i++) {
     b_weights[i].re = weights[i];
     b_weights[i].im = 0.0;
   }
-  for (i = 0; i < 32; i++) {
-    for (k = 0; k < 32; k++) {
+  for (i = 0; i < nchan; i++) {
+    for (k = 0; k < nchan; k++) {
       re = 0.0;
       muj = 0.0;
-      for (ar = 0; ar < 32; ar++) {
-        idx = i + (ar << 5);
+      for (ar = 0; ar < nchan; ar++) {
+        idx = i + (ar  * nchan);
         b_dW = b_weights[idx].re;
-        br = ar + (k << 5);
+        br = ar + (k  * nchan);
         weights_re_tmp = sphere_complex[br].im;
         lrate = b_weights[idx].im;
         oldchange = sphere_complex[br].re;
         re += b_dW * oldchange - lrate * weights_re_tmp;
         muj += b_dW * weights_re_tmp + lrate * oldchange;
       }
-      ar = i + (k << 5);
+      ar = i + (k  * nchan);
       c_weights[ar].re = re;
       c_weights[ar].im = muj;
     }
   }
-  inv(c_weights, winv);
-  for (k = 0; k < 1024; k++) {
+  inv(c_weights, winv, nchan);
+  for (k = 0; k < nmatrix; k++) {
     weights_re_tmp = winv[k].re;
     muj = winv[k].im;
     b_weights[k].re = weights_re_tmp * weights_re_tmp - muj * muj;
     weights_re_tmp *= muj;
     b_weights[k].im = weights_re_tmp + weights_re_tmp;
   }
-  for (j = 0; j < 32; j++) {
-    xpageoffset = j << 5;
+  for (j = 0; j < nchan; j++) {
+    xpageoffset = j  * nchan;
     re = b_weights[xpageoffset].re;
     muj = b_weights[xpageoffset].im;
     for (k = 0; k < 31; k++) {
@@ -2424,34 +2473,34 @@ void runica_simple(double data[976128], double weights[1024],
     y[j].re = re;
     y[j].im = muj;
   }
-  for (i = 0; i < 30504; i++) {
-    for (k = 0; k < 32; k++) {
+  for (i = 0; i < samples; i++) {
+    for (k = 0; k < nchan; k++) {
       weights_re_tmp = 0.0;
-      for (ar = 0; ar < 32; ar++) {
-        weights_re_tmp += weights[k + (ar << 5)] * data[ar + (i << 5)];
+      for (ar = 0; ar < nchan; ar++) {
+        weights_re_tmp += weights[k + (ar  * nchan)] * data[ar + (i  * nchan)];
       }
-      x[i + 30504 * k] = weights_re_tmp;
+      x[i + samples * k] = weights_re_tmp;
     }
   }
-  for (k = 0; k < 976128; k++) {
+  for (k = 0; k < ndata; k++) {
     weights_re_tmp = x[k];
     b_y[k] = weights_re_tmp * weights_re_tmp;
   }
   /*  Sort descending */
-  for (j = 0; j < 32; j++) {
-    xpageoffset = j * 30504;
+  for (j = 0; j < nchan; j++) {
+    xpageoffset = j * samples;
     weights_re_tmp = b_y[xpageoffset];
-    for (k = 0; k < 1023; k++) {
+    for (k = 0; k < samples - 1; k++) {
       weights_re_tmp += b_y[(xpageoffset + k) + 1];
     }
     rowmeans[j] = weights_re_tmp;
     for (idx = 0; idx < 29; idx++) {
-      br = xpageoffset + ((idx + 1) << 10);
+      br = xpageoffset + ((idx + 1)  * nmatrix);
       muj = b_y[br];
       if (idx + 2 == 30) {
         ar = 808;
       } else {
-        ar = 1024;
+        ar = nmatrix;
       }
       for (k = 2; k <= ar; k++) {
         muj += b_y[(br + k) - 1];
@@ -2462,30 +2511,37 @@ void runica_simple(double data[976128], double weights[1024],
     muj = y[j].re * weights_re_tmp;
     b_dW = y[j].im * weights_re_tmp;
     if (b_dW == 0.0) {
-      re = muj / 976127.0;
+      re = muj / ndata - 1.0;
       muj = 0.0;
     } else if (muj == 0.0) {
       re = 0.0;
-      muj = b_dW / 976127.0;
+      muj = b_dW / ndata - 1.0;
     } else {
-      re = muj / 976127.0;
-      muj = b_dW / 976127.0;
+      re = muj / ndata - 1.0;
+      muj = b_dW / ndata - 1.0;
     }
     y[j].re = re;
     y[j].im = muj;
   }
   sort(y, iidx);
-  for (i = 0; i < 32; i++) {
-    idx = i << 5;
-    for (k = 0; k < 32; k++) {
+  for (i = 0; i < nchan; i++) {
+    idx = i  * nchan;
+    for (k = 0; k < nchan; k++) {
       d_weights[k + idx] = weights[(iidx[k] + idx) - 1];
     }
   }
-  memcpy(&weights[0], &d_weights[0], 1024U * sizeof(double));
+  memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
   /* Copy real part of sphere_complex to sphere output */
-  for (i = 0; i < 1024; i++) {
+  for (i = 0; i < nmatrix; i++) {
     sphere[i] = sphere_complex[i].re;
   }
+
+  /* Free dynamically allocated arrays */
+  free(b_y);
+  free(x);
+  free(Xb_data);
+  free(tmp_data);
+  free(timeperm);
 }
 
 void runica_simple_initialize(void)
