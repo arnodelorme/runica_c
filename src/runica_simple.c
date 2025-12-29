@@ -42,23 +42,23 @@ static double rt_atan2d_snf(double u0, double u1);
 
 static double rt_hypotd_snf(double u0, double u1);
 
-static void sort(creal_T x[32], int idx[32]);
+static void sort(creal_T *x, int *idx, int nchan);
 
-static boolean_T sortLE(const creal_T v[32], int idx1, int idx2);
+static boolean_T sortLE(const creal_T *v, int idx1, int idx2);
 
 static void sqrtm(const double *A, creal_T *X, int nchan);
 
 static double xdlanv2(double *a, double *b, double *c, double *d, double *rt1i,
                       double *rt2r, double *rt2i, double *cs, double *sn);
 
-static int xhseqr(double h[1024], double z[1024]);
+static int xhseqr(double *h, double *z, int nchan);
 
-static double xnrm2(int n, const double x[1024], int ix0);
+static double xnrm2(int n, const double *x, int ix0, int nchan);
 
-static void xrot(int n, double x[1024], int ix0, int iy0, double c, double s);
+static void xrot(int n, double *x, int ix0, int iy0, double c, double s, int nchan);
 
-static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
-                   double work[32]);
+static void xzlarf(int m, int n, int iv0, double tau, double *C, int ic0,
+                   double *work, int nchan);
 
 /* Function Definitions */
 static void b_rand(double *r, int samples)
@@ -283,12 +283,8 @@ static void c_eml_rand_mt19937ar_stateful_i(void)
 
 static void inv(const creal_T *x, creal_T *y, int nchan)
 {
-  /* TODO: Generalize to variable nchan - currently only supports nchan=32 */
-  if (nchan != 32) {
-    fprintf(stderr, "Error: inv() currently only supports nchan=32, got %d\n", nchan);
-    return;
-  }
-  creal_T b_x[1024];
+  int nmatrix = nchan * nchan;
+  creal_T b_x[nmatrix];
   double ai;
   double ar;
   double bi;
@@ -306,23 +302,23 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
   int jp1j;
   int k;
   int pipk;
-  signed char ipiv[32];
-  signed char p[32];
-  for (i = 0; i < 1024; i++) {
+  signed char ipiv[nchan];
+  signed char p[nchan];
+  for (i = 0; i < nmatrix; i++) {
     y[i].re = 0.0;
     y[i].im = 0.0;
     b_x[i] = x[i];
   }
-  for (i = 0; i < 32; i++) {
+  for (i = 0; i < nchan; i++) {
     ipiv[i] = (signed char)(i + 1);
   }
-  for (j = 0; j < 31; j++) {
+  for (j = 0; j < (nchan - 1); j++) {
     int b_tmp;
     int mmj_tmp;
-    mmj_tmp = 30 - j;
-    b_tmp = j * 33;
+    mmj_tmp = (nchan - 2) - j;
+    b_tmp = j * (nchan + 1);
     jp1j = b_tmp + 2;
-    pipk = 32 - j;
+    pipk = nchan - j;
     jA = 0;
     smax = fabs(b_x[b_tmp].re) + fabs(b_x[b_tmp].im);
     for (k = 2; k <= pipk; k++) {
@@ -338,18 +334,18 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
       if (jA != 0) {
         jA += j;
         ipiv[j] = (signed char)(jA + 1);
-        for (k = 0; k < 32; k++) {
-          pipk = k << 5;
+        for (k = 0; k < nchan; k++) {
+          pipk = k * nchan;
           jBcol = j + pipk;
           temp_re = b_x[jBcol].re;
           smax = b_x[jBcol].im;
           b_x[jBcol] = b_x[jA + pipk];
-          i = jA + (k << 5);
+          i = jA + (k * nchan);
           b_x[i].re = temp_re;
           b_x[i].im = smax;
         }
       }
-      i = (b_tmp - j) + 32;
+      i = (b_tmp - j) + nchan;
       for (b_i = jp1j; b_i <= i; b_i++) {
         ar = b_x[b_i - 1].re;
         ai = b_x[b_i - 1].im;
@@ -411,7 +407,7 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
     }
     jA = b_tmp;
     for (jp1j = 0; jp1j <= mmj_tmp; jp1j++) {
-      pipk = (b_tmp + (jp1j << 5)) + 32;
+      pipk = (b_tmp + (jp1j * nchan)) + nchan;
       smax = b_x[pipk].re;
       sgnbr = b_x[pipk].im;
       if ((smax != 0.0) || (sgnbr != 0.0)) {
@@ -420,20 +416,20 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
         i = jA + 34;
         i2 = (jA - j) + 64;
         for (pipk = i; pipk <= i2; pipk++) {
-          jBcol = ((b_tmp + pipk) - jA) - 33;
+          jBcol = ((b_tmp + pipk) - jA) - (nchan + 1);
           sgnbr = b_x[jBcol].re;
           s = b_x[jBcol].im;
           b_x[pipk - 1].re += sgnbr * temp_re - s * smax;
           b_x[pipk - 1].im += sgnbr * smax + s * temp_re;
         }
       }
-      jA += 32;
+      jA += nchan;
     }
   }
-  for (i = 0; i < 32; i++) {
+  for (i = 0; i < nchan; i++) {
     p[i] = (signed char)(i + 1);
   }
-  for (k = 0; k < 31; k++) {
+  for (k = 0; k < (nchan - 1); k++) {
     signed char i1;
     i1 = ipiv[k];
     if (i1 > k + 1) {
@@ -442,18 +438,18 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
       p[k] = (signed char)pipk;
     }
   }
-  for (k = 0; k < 32; k++) {
-    i = (p[k] - 1) << 5;
+  for (k = 0; k < nchan; k++) {
+    i = (p[k] - 1) * nchan;
     i2 = k + i;
     y[i2].re = 1.0;
     y[i2].im = 0.0;
-    for (j = k + 1; j < 33; j++) {
+    for (j = k + 1; j < (nchan + 1); j++) {
       jBcol = (j + i) - 1;
       if ((y[jBcol].re != 0.0) || (y[jBcol].im != 0.0)) {
         i2 = j + 1;
-        for (b_i = i2; b_i < 33; b_i++) {
+        for (b_i = i2; b_i < (nchan + 1); b_i++) {
           smax = y[jBcol].re;
-          pipk = (b_i + ((j - 1) << 5)) - 1;
+          pipk = (b_i + ((j - 1) * nchan)) - 1;
           sgnbr = b_x[pipk].im;
           s = y[jBcol].im;
           temp_re = b_x[pipk].re;
@@ -464,10 +460,10 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
       }
     }
   }
-  for (j = 0; j < 32; j++) {
-    jBcol = j << 5;
-    for (k = 31; k >= 0; k--) {
-      jA = k << 5;
+  for (j = 0; j < nchan; j++) {
+    jBcol = j * nchan;
+    for (k = (nchan - 1); k >= 0; k--) {
+      jA = k * nchan;
       jp1j = k + jBcol;
       ar = y[jp1j].re;
       ai = y[jp1j].im;
@@ -724,15 +720,15 @@ static double rt_hypotd_snf(double u0, double u1)
   return y;
 }
 
-static void sort(creal_T x[32], int idx[32])
+static void sort(creal_T *x, int *idx, int nchan)
 {
-  creal_T xwork[32];
-  int iwork[32];
+  creal_T xwork[nchan];
+  int iwork[nchan];
   int i;
   int k;
   int pEnd;
   int qEnd;
-  for (k = 0; k <= 30; k += 2) {
+  for (k = 0; k <= (nchan - 2); k += 2) {
     if (sortLE(x, k + 1, k + 2)) {
       idx[k] = k + 1;
       idx[k + 1] = k + 2;
@@ -742,12 +738,12 @@ static void sort(creal_T x[32], int idx[32])
     }
   }
   i = 2;
-  while (i < 32) {
+  while (i < nchan) {
     int i2;
     int j;
     i2 = i << 1;
     j = 1;
-    for (pEnd = i + 1; pEnd < 33; pEnd = qEnd + i) {
+    for (pEnd = i + 1; pEnd < (nchan + 1); pEnd = qEnd + i) {
       int kEnd;
       int p;
       int q;
@@ -791,13 +787,14 @@ static void sort(creal_T x[32], int idx[32])
     }
     i = i2;
   }
-  memcpy(&xwork[0], &x[0], 32U * sizeof(creal_T));
-  for (k = 0; k < 32; k++) {
+  memcpy(&xwork[0], &x[0], (unsigned int)nchan * sizeof(creal_T));
+  for (k = 0; k < nchan; k++) {
     x[k] = xwork[idx[k] - 1];
   }
 }
 
-static boolean_T sortLE(const creal_T v[32], int idx1, int idx2)
+
+static boolean_T sortLE(const creal_T *v, int idx1, int idx2)
 {
   boolean_T p;
   if (rtIsNaN(v[idx2 - 1].re) || rtIsNaN(v[idx2 - 1].im)) {
@@ -868,17 +865,13 @@ static boolean_T sortLE(const creal_T v[32], int idx1, int idx2)
 
 static void sqrtm(const double *A, creal_T *X, int nchan)
 {
-  /* TODO: Generalize to variable nchan - currently only supports nchan=32 */
-  if (nchan != 32) {
-    fprintf(stderr, "Error: sqrtm() currently only supports nchan=32, got %d\n", nchan);
-    return;
-  }
-  creal_T Q[1024];
-  creal_T R[1024];
-  creal_T T[1024];
-  double Vr[1024];
-  double b_A[1024];
-  double work[32];
+  int nmatrix = nchan * nchan;
+  creal_T Q[nmatrix];
+  creal_T R[nmatrix];
+  creal_T T[nmatrix];
+  double Vr[nmatrix];
+  double b_A[nmatrix];
+  double work[nchan];
   double a;
   double b_d;
   double d;
@@ -904,7 +897,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
   boolean_T exitg2;
   boolean_T p;
   p = true;
-  for (m = 0; m < 1024; m++) {
+  for (m = 0; m < nmatrix; m++) {
     if (p) {
       d = A[m];
       if (rtIsInf(d) || rtIsNaN(d)) {
@@ -915,43 +908,43 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
     }
   }
   if (!p) {
-    for (i = 0; i < 1024; i++) {
+    for (i = 0; i < nmatrix; i++) {
       Q[i].re = rtNaN;
       Q[i].im = 0.0;
     }
     knt = 3;
-    for (j = 0; j < 30; j++) {
-      if (knt <= 32) {
-        memset(&Q[(j * 32 + knt) + -1], 0,
-               (unsigned int)(-knt + 33) * sizeof(creal_T));
+    for (j = 0; j < (nchan - 2); j++) {
+      if (knt <= nchan) {
+        memset(&Q[(j * nchan + knt) + -1], 0,
+               (unsigned int)(-knt + (nchan + 1)) * sizeof(creal_T));
       }
       knt++;
     }
-    for (i = 0; i < 1024; i++) {
+    for (i = 0; i < nmatrix; i++) {
       T[i].re = rtNaN;
       T[i].im = 0.0;
     }
   } else {
-    double tau[31];
-    memcpy(&b_A[0], &A[0], 1024U * sizeof(double));
+    double tau[nchan - 1];
+    memcpy(&b_A[0], &A[0], nmatrix * sizeof(double));
     memset(&work[0], 0, 32U * sizeof(double));
-    for (b_i = 0; b_i < 31; b_i++) {
+    for (b_i = 0; b_i < (nchan - 1); b_i++) {
       int alpha1_tmp_tmp_tmp;
       int in;
       int lastc;
       int lastv;
-      knt = b_i << 5;
-      in = (b_i + 1) << 5;
+      knt = b_i * nchan;
+      in = (b_i + 1) * nchan;
       alpha1_tmp_tmp_tmp = b_i + knt;
       t1_im = b_A[alpha1_tmp_tmp_tmp + 1];
-      if (b_i + 3 <= 32) {
+      if (b_i + 3 <= nchan) {
         i = b_i + 1;
       } else {
-        i = 30;
+        i = (nchan - 2);
       }
       ix0 = (i + knt) + 2;
       tau[b_i] = 0.0;
-      xnorm = xnrm2(30 - b_i, b_A, ix0);
+      xnorm = xnrm2((nchan - 2) - b_i, b_A, ix0, nchan);
       if (xnorm != 0.0) {
         xnorm = rt_hypotd_snf(t1_im, xnorm);
         if (t1_im >= 0.0) {
@@ -959,7 +952,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
         }
         if (fabs(xnorm) < 1.0020841800044864E-292) {
           knt = 0;
-          i = (ix0 - b_i) + 29;
+          i = (ix0 - b_i) + (nchan - 3);
           do {
             knt++;
             for (m = ix0; m <= i; m++) {
@@ -968,7 +961,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
             xnorm *= 9.9792015476736E+291;
             t1_im *= 9.9792015476736E+291;
           } while ((fabs(xnorm) < 1.0020841800044864E-292) && (knt < 20));
-          xnorm = rt_hypotd_snf(t1_im, xnrm2(30 - b_i, b_A, ix0));
+          xnorm = rt_hypotd_snf(t1_im, xnrm2((nchan - 2) - b_i, b_A, ix0, nchan));
           if (t1_im >= 0.0) {
             xnorm = -xnorm;
           }
@@ -984,7 +977,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
         } else {
           tau[b_i] = (xnorm - t1_im) / xnorm;
           a = 1.0 / (t1_im - xnorm);
-          i = (ix0 - b_i) + 29;
+          i = (ix0 - b_i) + (nchan - 3);
           for (m = ix0; m <= i; m++) {
             b_A[m - 1] *= a;
           }
@@ -994,24 +987,24 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
       b_A[alpha1_tmp_tmp_tmp + 1] = 1.0;
       ic0 = in + 1;
       if (tau[b_i] != 0.0) {
-        lastv = 30 - b_i;
-        knt = (alpha1_tmp_tmp_tmp - b_i) + 31;
+        lastv = (nchan - 2) - b_i;
+        knt = (alpha1_tmp_tmp_tmp - b_i) + (nchan - 1);
         while ((lastv + 1 > 0) && (b_A[knt] == 0.0)) {
           lastv--;
           knt--;
         }
-        lastc = 32;
+        lastc = nchan;
         exitg2 = false;
         while ((!exitg2) && (lastc > 0)) {
           knt = in + lastc;
           m = knt;
           do {
             exitg1 = 0;
-            if (m <= knt + (lastv << 5)) {
+            if (m <= knt + (lastv * nchan)) {
               if (b_A[m - 1] != 0.0) {
                 exitg1 = 1;
               } else {
-                m += 32;
+                m += nchan;
               }
             } else {
               lastc--;
@@ -1030,8 +1023,8 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
         if (lastc != 0) {
           memset(&work[0], 0, (unsigned int)lastc * sizeof(double));
           knt = alpha1_tmp_tmp_tmp + 1;
-          i = (in + (lastv << 5)) + 1;
-          for (ix0 = ic0; ix0 <= i; ix0 += 32) {
+          i = (in + (lastv * nchan)) + 1;
+          for (ix0 = ic0; ix0 <= i; ix0 += nchan) {
             i1 = (ix0 + lastc) - 1;
             for (m = ix0; m <= i1; m++) {
               mm1 = m - ix0;
@@ -1052,36 +1045,36 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
                 b_A[ix0 - 1] += work[(ix0 - knt) - 1] * xnorm;
               }
             }
-            knt += 32;
+            knt += nchan;
           }
         }
       }
-      xzlarf(31 - b_i, 31 - b_i, alpha1_tmp_tmp_tmp + 2, tau[b_i], b_A,
-             (b_i + in) + 2, work);
+      xzlarf((nchan - 1) - b_i, (nchan - 1) - b_i, alpha1_tmp_tmp_tmp + 2, tau[b_i], b_A,
+             (b_i + in) + 2, work, nchan);
       b_A[alpha1_tmp_tmp_tmp + 1] = t1_im;
     }
-    memcpy(&Vr[0], &b_A[0], 1024U * sizeof(double));
-    for (j = 30; j >= 0; j--) {
-      m = (j + 1) << 5;
+    memcpy(&Vr[0], &b_A[0], nmatrix * sizeof(double));
+    for (j = (nchan - 2); j >= 0; j--) {
+      m = (j + 1) * nchan;
       for (b_i = 0; b_i <= j; b_i++) {
         Vr[m + b_i] = 0.0;
       }
       i = j + 3;
-      for (b_i = i; b_i < 33; b_i++) {
+      for (b_i = i; b_i < (nchan + 1); b_i++) {
         knt = m + b_i;
-        Vr[knt - 1] = Vr[knt - 33];
+        Vr[knt - 1] = Vr[knt - (nchan + 1)];
       }
     }
     memset(&Vr[0], 0, 32U * sizeof(double));
     Vr[0] = 1.0;
     memset(&work[0], 0, 32U * sizeof(double));
-    for (b_i = 30; b_i >= 0; b_i--) {
-      knt = (b_i + (b_i << 5)) + 33;
-      if (b_i + 1 < 31) {
+    for (b_i = (nchan - 2); b_i >= 0; b_i--) {
+      knt = (b_i + (b_i * nchan)) + (nchan + 1);
+      if (b_i + 1 < (nchan - 1)) {
         Vr[knt] = 1.0;
-        xzlarf(31 - b_i, 30 - b_i, knt + 1, tau[b_i], Vr, knt + 33, work);
+        xzlarf((nchan - 1) - b_i, (nchan - 2) - b_i, knt + 1, tau[b_i], Vr, knt + (nchan + 1), work, nchan);
         ix0 = knt + 2;
-        i = (knt - b_i) + 31;
+        i = (knt - b_i) + (nchan - 1);
         for (m = ix0; m <= i; m++) {
           Vr[m - 1] *= -tau[b_i];
         }
@@ -1091,21 +1084,21 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
         Vr[(knt - j) - 1] = 0.0;
       }
     }
-    xhseqr(b_A, Vr);
-    for (i = 0; i < 1024; i++) {
+    xhseqr(b_A, Vr, nchan);
+    for (i = 0; i < nmatrix; i++) {
       T[i].re = b_A[i];
       T[i].im = 0.0;
       Q[i].re = Vr[i];
       Q[i].im = 0.0;
     }
-    for (m = 30; m >= 0; m--) {
+    for (m = (nchan - 2); m >= 0; m--) {
       mm1 = m + 1;
-      i = m << 5;
+      i = m * nchan;
       i1 = m + i;
       d = b_A[i1 + 1];
       if (d != 0.0) {
         a = b_A[i1];
-        ic0 = (m + 1) << 5;
+        ic0 = (m + 1) * nchan;
         knt = m + ic0;
         xnorm = b_A[knt];
         t1_im = d;
@@ -1126,8 +1119,8 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
           sn = rt1i / xnorm;
         }
         s = d / xnorm;
-        for (j = mm1; j < 33; j++) {
-          ix0 = m + ((j - 1) << 5);
+        for (j = mm1; j < (nchan + 1); j++) {
+          ix0 = m + ((j - 1) * nchan);
           xnorm = T[ix0].re;
           t1_im = T[ix0].im;
           d_tmp = T[ix0 + 1].re;
@@ -1153,7 +1146,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
           T[knt].re = (a * d_tmp + sn * rt1r) - s * xnorm;
           T[knt].im = (a * rt1r - sn * d_tmp) - s * t1_im;
         }
-        for (b_i = 0; b_i < 32; b_i++) {
+        for (b_i = 0; b_i < nchan; b_i++) {
           ix0 = b_i + i;
           xnorm = Q[ix0].re;
           t1_im = Q[ix0].im;
@@ -1167,8 +1160,8 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
           Q[knt].re = (a * d_tmp + sn * rt1r) - s * xnorm;
           Q[knt].im = (a * rt1r - sn * d_tmp) - s * t1_im;
         }
-        T[(m + (m << 5)) + 1].re = 0.0;
-        T[(m + (m << 5)) + 1].im = 0.0;
+        T[(m + (m * nchan)) + 1].re = 0.0;
+        T[(m + (m * nchan)) + 1].im = 0.0;
       }
     }
   }
@@ -1176,16 +1169,16 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
   int exitg3;
   do {
     exitg3 = 0;
-    if (j + 1 < 32) {
+    if (j + 1 < nchan) {
       b_i = 0;
       do {
         exitg1 = 0;
         if (b_i <= j) {
-          knt = b_i + ((j + 1) << 5);
+          knt = b_i + ((j + 1) * nchan);
           if ((T[knt].re != 0.0) || (T[knt].im != 0.0)) {
-            memset(&R[0], 0, 1024U * sizeof(creal_T));
-            for (j = 0; j < 32; j++) {
-              mm1 = j << 5;
+            memset(&R[0], 0, nmatrix * sizeof(creal_T));
+            for (j = 0; j < nchan; j++) {
+              mm1 = j * nchan;
               ic0 = j + mm1;
               R[ic0] = T[ic0];
               b_sqrt(&R[ic0]);
@@ -1194,7 +1187,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
                 mu1_im = 0.0;
                 i = b_i + 1;
                 for (m = i; m <= j; m++) {
-                  knt = (b_i + ((m - 1) << 5)) - 1;
+                  knt = (b_i + ((m - 1) * nchan)) - 1;
                   xnorm = R[knt].re;
                   ix0 = (m + mm1) - 1;
                   t1_im = R[ix0].im;
@@ -1206,7 +1199,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
                 knt = (b_i + mm1) - 1;
                 mu1_re = T[knt].re - mu1_re;
                 mu1_im = T[knt].im - mu1_im;
-                ix0 = (b_i + ((b_i - 1) << 5)) - 1;
+                ix0 = (b_i + ((b_i - 1) * nchan)) - 1;
                 t1_im = R[ix0].re + R[ic0].re;
                 d_tmp = R[ix0].im + R[ic0].im;
                 if (d_tmp == 0.0) {
@@ -1276,38 +1269,38 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
         exitg3 = 1;
       }
     } else {
-      memset(&R[0], 0, 1024U * sizeof(creal_T));
-      for (j = 0; j < 32; j++) {
-        knt = j + (j << 5);
+      memset(&R[0], 0, nmatrix * sizeof(creal_T));
+      for (j = 0; j < nchan; j++) {
+        knt = j + (j * nchan);
         R[knt] = T[knt];
         b_sqrt(&R[knt]);
       }
       exitg3 = 1;
     }
   } while (exitg3 == 0);
-  for (i = 0; i < 32; i++) {
-    for (i1 = 0; i1 < 32; i1++) {
+  for (i = 0; i < nchan; i++) {
+    for (i1 = 0; i1 < nchan; i1++) {
       a = 0.0;
       sn = 0.0;
-      for (mm1 = 0; mm1 < 32; mm1++) {
-        ix0 = i + (mm1 << 5);
+      for (mm1 = 0; mm1 < nchan; mm1++) {
+        ix0 = i + (mm1 * nchan);
         xnorm = Q[ix0].re;
-        knt = mm1 + (i1 << 5);
+        knt = mm1 + (i1 * nchan);
         t1_im = R[knt].im;
         d_tmp = Q[ix0].im;
         rt1r = R[knt].re;
         a += xnorm * rt1r - d_tmp * t1_im;
         sn += xnorm * t1_im + d_tmp * rt1r;
       }
-      mm1 = i + (i1 << 5);
+      mm1 = i + (i1 * nchan);
       T[mm1].re = a;
       T[mm1].im = sn;
     }
-    for (i1 = 0; i1 < 32; i1++) {
+    for (i1 = 0; i1 < nchan; i1++) {
       a = 0.0;
       sn = 0.0;
-      for (mm1 = 0; mm1 < 32; mm1++) {
-        ix0 = mm1 << 5;
+      for (mm1 = 0; mm1 < nchan; mm1++) {
+        ix0 = mm1 * nchan;
         knt = i1 + ix0;
         xnorm = Q[knt].re;
         t1_im = -Q[knt].im;
@@ -1317,21 +1310,21 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
         a += d_tmp * xnorm - rt1r * t1_im;
         sn += d_tmp * t1_im + rt1r * xnorm;
       }
-      mm1 = i + (i1 << 5);
+      mm1 = i + (i1 * nchan);
       X[mm1].re = a;
       X[mm1].im = sn;
     }
   }
-  for (i = 0; i < 1024; i++) {
+  for (i = 0; i < nmatrix; i++) {
     b_A[i] = X[i].im;
   }
   xnorm = 0.0;
   j = 0;
   exitg2 = false;
-  while ((!exitg2) && (j < 32)) {
+  while ((!exitg2) && (j < nchan)) {
     s = 0.0;
-    for (b_i = 0; b_i < 32; b_i++) {
-      s += fabs(b_A[b_i + (j << 5)]);
+    for (b_i = 0; b_i < nchan; b_i++) {
+      s += fabs(b_A[b_i + (j * nchan)]);
     }
     if (rtIsNaN(s)) {
       xnorm = rtNaN;
@@ -1346,10 +1339,10 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
   t1_im = 0.0;
   j = 0;
   exitg2 = false;
-  while ((!exitg2) && (j < 32)) {
+  while ((!exitg2) && (j < nchan)) {
     s = 0.0;
-    for (b_i = 0; b_i < 32; b_i++) {
-      knt = b_i + (j << 5);
+    for (b_i = 0; b_i < nchan; b_i++) {
+      knt = b_i + (j * nchan);
       s += rt_hypotd_snf(X[knt].re, X[knt].im);
     }
     if (rtIsNaN(s)) {
@@ -1363,7 +1356,7 @@ static void sqrtm(const double *A, creal_T *X, int nchan)
     }
   }
   if (xnorm <= 7.1054273576010019E-14 * t1_im) {
-    for (i = 0; i < 1024; i++) {
+    for (i = 0; i < nmatrix; i++) {
       X[i].im = 0.0;
     }
   }
@@ -1509,7 +1502,7 @@ static double xdlanv2(double *a, double *b, double *c, double *d, double *rt1i,
   return rt1r;
 }
 
-static int xhseqr(double h[1024], double z[1024])
+static int xhseqr(double *h, double *z, int nchan)
 {
   double bb;
   double d;
@@ -1529,14 +1522,14 @@ static int xhseqr(double h[1024], double z[1024])
   int nr;
   boolean_T exitg1;
   info = 0;
-  for (nr = 0; nr < 29; nr++) {
-    i = nr + (nr << 5);
+  for (nr = 0; nr < (nchan - 3); nr++) {
+    i = nr + (nr * nchan);
     h[i + 2] = 0.0;
     h[i + 3] = 0.0;
   }
-  h[959] = 0.0;
+  h[((nchan - 2) * nchan - 1)] = 0.0;
   kdefl = 0;
-  b_i = 31;
+  b_i = (nchan - 1);
   exitg1 = false;
   while ((!exitg1) && (b_i + 1 >= 1)) {
     double h12;
@@ -1550,26 +1543,26 @@ static int xhseqr(double h[1024], double z[1024])
     converged = false;
     its = 0;
     exitg2 = false;
-    while ((!exitg2) && (its < 961)) {
+    while ((!exitg2) && (its < ((nchan - 1) * nchan + 1))) {
       boolean_T exitg3;
       k = b_i;
       exitg3 = false;
       while ((!exitg3) && (k + 1 > l)) {
-        i = k + ((k - 1) << 5);
+        i = k + ((k - 1) * nchan);
         d = fabs(h[i]);
         if (d <= 3.2066693760143564E-291) {
           exitg3 = true;
         } else {
-          knt = k + (k << 5);
+          knt = k + (k * nchan);
           h12 = h[knt];
           tr = fabs(h12);
           bb = h[i - 1];
           tst = fabs(bb) + tr;
           if (tst == 0.0) {
             if (k - 1 >= 1) {
-              tst = fabs(h[(k + ((k - 2) << 5)) - 1]);
+              tst = fabs(h[(k + ((k - 2) * nchan)) - 1]);
             }
-            if (k + 2 <= 32) {
+            if (k + 2 <= nchan) {
               tst += fabs(h[knt + 1]);
             }
           }
@@ -1593,7 +1586,7 @@ static int xhseqr(double h[1024], double z[1024])
       }
       l = k + 1;
       if (k + 1 > 1) {
-        h[k + ((k - 1) << 5)] = 0.0;
+        h[k + ((k - 1) * nchan)] = 0.0;
       }
       if (k + 1 >= b_i) {
         converged = true;
@@ -1604,24 +1597,24 @@ static int xhseqr(double h[1024], double z[1024])
         int m;
         kdefl++;
         if (kdefl - kdefl / 20 * 20 == 0) {
-          s = fabs(h[b_i + ((b_i - 1) << 5)]) +
-              fabs(h[(b_i + ((b_i - 2) << 5)) - 1]);
-          tst = 0.75 * s + h[b_i + (b_i << 5)];
+          s = fabs(h[b_i + ((b_i - 1) * nchan)]) +
+              fabs(h[(b_i + ((b_i - 2) * nchan)) - 1]);
+          tst = 0.75 * s + h[b_i + (b_i * nchan)];
           h12 = -0.4375 * s;
           bb = s;
           h22 = tst;
         } else if (kdefl - kdefl / 10 * 10 == 0) {
-          knt = k + (k << 5);
-          s = fabs(h[knt + 1]) + fabs(h[(k + ((k + 1) << 5)) + 2]);
+          knt = k + (k * nchan);
+          s = fabs(h[knt + 1]) + fabs(h[(k + ((k + 1) * nchan)) + 2]);
           tst = 0.75 * s + h[knt];
           h12 = -0.4375 * s;
           bb = s;
           h22 = tst;
         } else {
-          knt = b_i + ((b_i - 1) << 5);
+          knt = b_i + ((b_i - 1) * nchan);
           tst = h[knt - 1];
           bb = h[knt];
-          knt = b_i + (b_i << 5);
+          knt = b_i + (b_i * nchan);
           h12 = h[knt - 1];
           h22 = h[knt];
         }
@@ -1661,13 +1654,13 @@ static int xhseqr(double h[1024], double z[1024])
         m = b_i - 1;
         exitg3 = false;
         while ((!exitg3) && (m >= k + 1)) {
-          knt = m + ((m - 1) << 5);
+          knt = m + ((m - 1) * nchan);
           tst = h[knt];
           s_tmp_tmp = h[knt - 1];
           bb = s_tmp_tmp - rt2r;
           s = (fabs(bb) + fabs(h22)) + fabs(tst);
           h12 = tst / s;
-          knt = m + (m << 5);
+          knt = m + (m * nchan);
           v[0] = (h12 * h[knt - 1] + bb * (bb / s)) - tr * (h22 / s);
           tst = h[knt];
           v[1] = h12 * (((s_tmp_tmp + tst) - rt1r) - rt2r);
@@ -1679,7 +1672,7 @@ static int xhseqr(double h[1024], double z[1024])
           if (m == k + 1) {
             exitg3 = true;
           } else {
-            i = m + ((m - 2) << 5);
+            i = m + ((m - 2) * nchan);
             if (fabs(h[i - 1]) * (fabs(v[1]) + fabs(v[2])) <=
                 2.2204460492503131E-16 * fabs(v[0]) *
                     ((fabs(h[i - 2]) + fabs(s_tmp_tmp)) + fabs(tst))) {
@@ -1697,7 +1690,7 @@ static int xhseqr(double h[1024], double z[1024])
             nr = knt;
           }
           if (c_k > m) {
-            knt = (((c_k - 2) << 5) + c_k) - 1;
+            knt = (((c_k - 2) * nchan) + c_k) - 1;
             for (b_k = 0; b_k < nr; b_k++) {
               v[b_k] = h[knt + b_k];
             }
@@ -1745,14 +1738,14 @@ static int xhseqr(double h[1024], double z[1024])
             }
           }
           if (c_k > m) {
-            i = c_k + ((c_k - 2) << 5);
+            i = c_k + ((c_k - 2) * nchan);
             h[i - 1] = h12;
             h[i] = 0.0;
             if (c_k < b_i) {
               h[i + 1] = 0.0;
             }
           } else if (m > k + 1) {
-            i = (c_k + ((c_k - 2) << 5)) - 1;
+            i = (c_k + ((c_k - 2) * nchan)) - 1;
             h[i] *= 1.0 - tr;
           }
           d = v[1];
@@ -1760,8 +1753,8 @@ static int xhseqr(double h[1024], double z[1024])
           if (nr == 3) {
             s_tmp_tmp = v[2];
             h12 = tr * v[2];
-            for (nr = c_k; nr < 33; nr++) {
-              i = c_k + ((nr - 1) << 5);
+            for (nr = c_k; nr < (nchan + 1); nr++) {
+              i = c_k + ((nr - 1) * nchan);
               rt2r = h[i - 1];
               rt1r = h[i];
               s = h[i + 1];
@@ -1779,11 +1772,11 @@ static int xhseqr(double h[1024], double z[1024])
               i = b_i;
             }
             for (nr = 0; nr <= i; nr++) {
-              b_k = nr + ((c_k - 1) << 5);
+              b_k = nr + ((c_k - 1) * nchan);
               rt2r = h[b_k];
-              i1 = nr + (c_k << 5);
+              i1 = nr + (c_k * nchan);
               rt1r = h[i1];
-              knt = nr + ((c_k + 1) << 5);
+              knt = nr + ((c_k + 1) * nchan);
               s = h[knt];
               bb = (rt2r + d * rt1r) + s_tmp_tmp * s;
               rt2r -= bb * tr;
@@ -1793,12 +1786,12 @@ static int xhseqr(double h[1024], double z[1024])
               s -= bb * h12;
               h[knt] = s;
             }
-            for (nr = 0; nr < 32; nr++) {
-              i = nr + ((c_k - 1) << 5);
+            for (nr = 0; nr < nchan; nr++) {
+              i = nr + ((c_k - 1) * nchan);
               rt2r = z[i];
-              b_k = nr + (c_k << 5);
+              b_k = nr + (c_k * nchan);
               rt1r = z[b_k];
-              i1 = nr + ((c_k + 1) << 5);
+              i1 = nr + ((c_k + 1) * nchan);
               s = z[i1];
               bb = (rt2r + d * rt1r) + s_tmp_tmp * s;
               rt2r -= bb * tr;
@@ -1809,8 +1802,8 @@ static int xhseqr(double h[1024], double z[1024])
               z[i1] = s;
             }
           } else if (nr == 2) {
-            for (nr = c_k; nr < 33; nr++) {
-              i = c_k + ((nr - 1) << 5);
+            for (nr = c_k; nr < (nchan + 1); nr++) {
+              i = c_k + ((nr - 1) * nchan);
               s_tmp_tmp = h[i - 1];
               rt2r = h[i];
               bb = s_tmp_tmp + d * rt2r;
@@ -1820,9 +1813,9 @@ static int xhseqr(double h[1024], double z[1024])
               h[i] = rt2r;
             }
             for (nr = 0; nr <= b_i; nr++) {
-              i = nr + ((c_k - 1) << 5);
+              i = nr + ((c_k - 1) * nchan);
               s_tmp_tmp = h[i];
-              b_k = nr + (c_k << 5);
+              b_k = nr + (c_k * nchan);
               rt2r = h[b_k];
               bb = s_tmp_tmp + d * rt2r;
               s_tmp_tmp -= bb * tr;
@@ -1830,10 +1823,10 @@ static int xhseqr(double h[1024], double z[1024])
               rt2r -= bb * tst;
               h[b_k] = rt2r;
             }
-            for (nr = 0; nr < 32; nr++) {
-              i = nr + ((c_k - 1) << 5);
+            for (nr = 0; nr < nchan; nr++) {
+              i = nr + ((c_k - 1) * nchan);
               s_tmp_tmp = z[i];
-              b_k = nr + (c_k << 5);
+              b_k = nr + (c_k * nchan);
               rt2r = z[b_k];
               bb = s_tmp_tmp + d * rt2r;
               s_tmp_tmp -= bb * tr;
@@ -1851,10 +1844,10 @@ static int xhseqr(double h[1024], double z[1024])
       exitg1 = true;
     } else {
       if ((l != b_i + 1) && (l == b_i)) {
-        i = b_i << 5;
+        i = b_i * nchan;
         b_k = b_i + i;
         d = h[b_k - 1];
-        i1 = (b_i - 1) << 5;
+        i1 = (b_i - 1) * nchan;
         knt = b_i + i1;
         s_tmp_tmp = h[knt];
         rt2r = h[b_k];
@@ -1862,36 +1855,39 @@ static int xhseqr(double h[1024], double z[1024])
         h[b_k - 1] = d;
         h[knt] = s_tmp_tmp;
         h[b_k] = rt2r;
-        if (b_i + 1 < 32) {
-          knt = ((b_i + 1) << 5) + b_i;
-          b_k = 30 - b_i;
+        if (b_i + 1 < nchan) {
+          knt = ((b_i + 1) * nchan) + b_i;
+          b_k = (nchan - 2) - b_i;
           for (k = 0; k <= b_k; k++) {
-            nr = knt + (k << 5);
+            nr = knt + (k * nchan);
             tst = h[nr];
             h12 = h[nr - 1];
             h[nr] = tr * tst - h22 * h12;
             h[nr - 1] = tr * h12 + h22 * tst;
           }
         }
-        xrot(b_i - 1, h, i1 + 1, i + 1, tr, h22);
-        xrot(32, z, i1 + 1, i + 1, tr, h22);
+        xrot(b_i - 1, h, i1 + 1, i + 1, tr, h22, nchan);
+        xrot(nchan, z, i1 + 1, i + 1, tr, h22, nchan);
       }
       kdefl = 0;
       b_i = l - 2;
     }
   }
-  for (nr = 0; nr < 30; nr++) {
-    for (b_i = nr + 3; b_i < 33; b_i++) {
-      h[(b_i + (nr << 5)) - 1] = 0.0;
+  for (nr = 0; nr < (nchan - 2); nr++) {
+    for (b_i = nr + 3; b_i < (nchan + 1); b_i++) {
+      h[(b_i + (nr * nchan)) - 1] = 0.0;
     }
   }
   return info;
 }
 
-static double xnrm2(int n, const double x[1024], int ix0)
+
+
+static double xnrm2(int n, const double *x, int ix0, int nchan)
 {
   double y;
   int k;
+  (void)nchan; /* nchan not needed in this function, but kept for consistency */
   y = 0.0;
   if (n >= 1) {
     if (n == 1) {
@@ -1921,9 +1917,10 @@ static double xnrm2(int n, const double x[1024], int ix0)
   return y;
 }
 
-static void xrot(int n, double x[1024], int ix0, int iy0, double c, double s)
+static void xrot(int n, double *x, int ix0, int iy0, double c, double s, int nchan)
 {
   int k;
+  (void)nchan; /* nchan not needed in this function, but kept for consistency */
   if (n >= 1) {
     int i;
     i = (unsigned char)n;
@@ -1942,8 +1939,8 @@ static void xrot(int n, double x[1024], int ix0, int iy0, double c, double s)
   }
 }
 
-static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
-                   double work[32])
+static void xzlarf(int m, int n, int iv0, double tau, double *C, int ic0,
+                   double *work, int nchan)
 {
   int i;
   int ia;
@@ -1961,7 +1958,7 @@ static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
     exitg2 = false;
     while ((!exitg2) && (lastc > 0)) {
       int exitg1;
-      i = ic0 + ((lastc - 1) << 5);
+      i = ic0 + ((lastc - 1) * nchan);
       ia = i;
       do {
         exitg1 = 0;
@@ -1991,14 +1988,14 @@ static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
     if (lastc != 0) {
       b_i = (unsigned char)lastc;
       memset(&work[0], 0, (unsigned int)b_i * sizeof(double));
-      b_i = ic0 + ((lastc - 1) << 5);
-      for (i = ic0; i <= b_i; i += 32) {
+      b_i = ic0 + ((lastc - 1) * nchan);
+      for (i = ic0; i <= b_i; i += nchan) {
         c = 0.0;
         i1 = (i + lastv) - 1;
         for (ia = i; ia <= i1; ia++) {
           c += C[ia - 1] * C[((iv0 + ia) - i) - 1];
         }
-        i1 = (i - ic0) >> 5;
+        i1 = (i - ic0) / nchan;
         work[i1] += c;
       }
     }
@@ -2014,7 +2011,7 @@ static void xzlarf(int m, int n, int iv0, double tau, double C[1024], int ic0,
             C[ia - 1] += C[((iv0 + ia) - i) - 1] * c;
           }
         }
-        i += 32;
+        i += nchan;
       }
     }
   }
@@ -2528,7 +2525,7 @@ void runica_simple(double *data, double *weights, double *sphere,
     y[j].re = re;
     y[j].im = muj;
   }
-  sort(y, iidx);
+  sort(y, iidx, nchan);
   for (i = 0; i < nchan; i++) {
     idx = i  * nchan;
     for (k = 0; k < nchan; k++) {
