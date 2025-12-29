@@ -10,6 +10,7 @@ set -e  # Exit on error
 DATASET=${1:-"./data/eeglab_data"}
 NCHANS=${2:-32}
 SUFFIX=${3:-"_darwin"}
+EXTENDED=${4:-1}  # 1=extended ICA (tanh), 0=standard ICA (logistic)
 
 # Derived paths
 DATAFILE="${DATASET}.fdt"
@@ -24,6 +25,7 @@ echo "========================================"
 echo "Dataset: $DATASET"
 echo "Channels: $NCHANS"
 echo "Suffix: $SUFFIX"
+echo "Extended: $EXTENDED (1=extended, 0=standard)"
 echo ""
 
 # Check if data file exists
@@ -60,8 +62,9 @@ if [ -z "$RUNICA_EXE" ]; then
 fi
 
 # Run runica
+# Note: executable uses defaults for npoints, but we pass nchans and extended
 echo "Running $RUNICA_EXE..."
-$RUNICA_EXE "$DATAFILE" "$WTSFILE" "$SPHFILE"
+$RUNICA_EXE "$DATAFILE" "$WTSFILE" "$SPHFILE" "$NCHANS" 30504 "$EXTENDED"
 
 if [ $? -ne 0 ]; then
     echo "Error: $RUNICA_EXE failed"

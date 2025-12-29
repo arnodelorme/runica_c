@@ -28,9 +28,13 @@ static void b_rand(double *r, int samples);
 
 static void b_sqrt(creal_T *x);
 
+static void b_mean(const double *x, double *y, int nchan, int samples);
+
 static double b_xnrm2(int n, const double x[3]);
 
 static void c_eml_rand_mt19937ar_stateful_i(void);
+
+static void c_rand(double *r, int samples);
 
 static void inv(const creal_T *x, creal_T *y, int nchan);
 
@@ -41,6 +45,10 @@ static void randperm(double *p, int samples);
 static double rt_atan2d_snf(double u0, double u1);
 
 static double rt_hypotd_snf(double u0, double u1);
+
+static double rt_powd_snf(double u0, double u1);
+
+static double rt_remd_snf(double u0, double u1);
 
 static void sort(creal_T *x, int *idx, int nchan);
 
@@ -538,6 +546,39 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
   }
 }
 
+static void b_mean(const double *x, double *y, int nchan, int samples)
+{
+  int ib;
+  int k;
+  int xi;
+  for (xi = 0; xi < nchan; xi++) {
+    double bsum;
+    int xpageoffset;
+    xpageoffset = xi * samples;
+    bsum = x[xpageoffset];
+    for (k = 0; k < 1023; k++) {
+      bsum += x[(xpageoffset + k) + 1];
+    }
+    y[xi] = bsum;
+    for (ib = 0; ib < (samples / 1024 - 1); ib++) {
+      int hi;
+      int xblockoffset;
+      xblockoffset = xpageoffset + ((ib + 1) << 10);
+      bsum = x[xblockoffset];
+      if (ib + 2 == samples / 1024) {
+        hi = samples % 1024;
+      } else {
+        hi = 1024;
+      }
+      for (k = 2; k <= hi; k++) {
+        bsum += x[(xblockoffset + k) - 1];
+      }
+      y[xi] += bsum;
+    }
+    y[xi] /= (double)samples;
+  }
+}
+
 static void mean(const double *x, double *y, int nchan, int samples)
 {
   double *bsum = (double *)malloc(nchan * sizeof(double));
@@ -664,6 +705,130 @@ static void randperm(double *p, int samples)
 
   free(idx);
   free(iwork);
+}
+
+static void c_rand(double *r, int samples)
+{
+  int j;
+  int k;
+  int kk;
+  for (k = 0; k < samples; k++) {
+    double b_r;
+    unsigned int u[2];
+    do {
+      for (j = 0; j < 2; j++) {
+        unsigned int mti;
+        unsigned int y;
+        mti = state[624] + 1U;
+        if (state[624] + 1U >= 625U) {
+          for (kk = 0; kk < 227; kk++) {
+            y = (state[kk] & 2147483648U) | (state[kk + 1] & 2147483647U);
+            if ((y & 1U) == 0U) {
+              y >>= 1U;
+            } else {
+              y = y >> 1U ^ 2567483615U;
+            }
+            state[kk] = state[kk + 397] ^ y;
+          }
+          for (kk = 0; kk < 396; kk++) {
+            y = (state[kk + 227] & 2147483648U) |
+                (state[kk + 228] & 2147483647U);
+            if ((y & 1U) == 0U) {
+              y >>= 1U;
+            } else {
+              y = y >> 1U ^ 2567483615U;
+            }
+            state[kk + 227] = state[kk] ^ y;
+          }
+          y = (state[623] & 2147483648U) | (state[0] & 2147483647U);
+          if ((y & 1U) == 0U) {
+            y >>= 1U;
+          } else {
+            y = y >> 1U ^ 2567483615U;
+          }
+          state[623] = state[396] ^ y;
+          mti = 1U;
+        }
+        y = state[(int)mti - 1];
+        state[624] = mti;
+        y ^= y >> 11U;
+        y ^= y << 7U & 2636928640U;
+        y ^= y << 15U & 4022730752U;
+        u[j] = y ^ y >> 18U;
+      }
+      u[0] >>= 5U;
+      u[1] >>= 6U;
+      b_r =
+          1.1102230246251565E-16 * ((double)u[0] * 6.7108864E+7 + (double)u[1]);
+    } while (b_r == 0.0);
+    r[k] = b_r;
+  }
+}
+
+static double rt_powd_snf(double u0, double u1)
+{
+  double y;
+  if (rtIsNaN(u0) || rtIsNaN(u1)) {
+    y = rtNaN;
+  } else {
+    double d;
+    double d1;
+    d = fabs(u0);
+    d1 = fabs(u1);
+    if (rtIsInf(u1)) {
+      if (d == 1.0) {
+        y = 1.0;
+      } else if (d > 1.0) {
+        if (u1 > 0.0) {
+          y = rtInf;
+        } else {
+          y = 0.0;
+        }
+      } else if (u1 > 0.0) {
+        y = 0.0;
+      } else {
+        y = rtInf;
+      }
+    } else if (d1 == 0.0) {
+      y = 1.0;
+    } else if (d1 == 1.0) {
+      if (u1 > 0.0) {
+        y = u0;
+      } else {
+        y = 1.0 / u0;
+      }
+    } else if (u1 == 2.0) {
+      y = u0 * u0;
+    } else if ((u1 == 0.5) && (u0 >= 0.0)) {
+      y = sqrt(u0);
+    } else if ((u0 < 0.0) && (u1 > floor(u1))) {
+      y = rtNaN;
+    } else {
+      y = pow(u0, u1);
+    }
+  }
+  return y;
+}
+
+static double rt_remd_snf(double u0, double u1)
+{
+  double y;
+  if (rtIsNaN(u0) || rtIsNaN(u1) || rtIsInf(u0)) {
+    y = rtNaN;
+  } else if (rtIsInf(u1)) {
+    y = u0;
+  } else if ((u1 != 0.0) && (u1 != trunc(u1))) {
+    double q;
+    q = fabs(u0 / u1);
+    if (!(fabs(q - floor(q + 0.5)) > DBL_EPSILON * q)) {
+      y = 0.0 * u0;
+    } else {
+      y = fmod(u0, u1);
+    }
+  } else {
+    y = fmod(u0, u1);
+  }
+  return y;
 }
 
 static double rt_atan2d_snf(double u0, double u1)
@@ -2018,13 +2183,17 @@ static void xzlarf(int m, int n, int iv0, double tau, double *C, int ic0,
 }
 
 void runica_simple(double *data, double *weights, double *sphere,
-                   int nchan, int samples)
+                   int nchan, int samples, boolean_T extended)
 {
   const int ndata = nchan * samples;
   const int nmatrix = nchan * nchan;
   const int block = 52;
   const int nblocks = samples / block;  /* Floor division */
   const int xb_size = nchan * (samples - nchan);
+
+  /* Extended ICA sample size for kurtosis estimation */
+  const int kurt_samples = 6000;
+  const int kurt_data_size = nchan * kurt_samples;
 
   /* Large arrays - dynamically allocated */
   double *b_y = (double *)malloc(ndata * sizeof(double));
@@ -2033,12 +2202,52 @@ void runica_simple(double *data, double *weights, double *sphere,
   double *tmp_data = (double *)malloc(xb_size * sizeof(double));
   double *timeperm = (double *)malloc(samples * sizeof(double));
 
+  /* Extended ICA arrays (allocated only if extended mode is enabled) */
+  double *signs = NULL;
+  double *oldsigns = NULL;
+  double *bias = NULL;
+  double *kk = NULL;
+  double *m2 = NULL;
+  double *b_newdata = NULL;
+  double *m2_tmp = NULL;
+  double *rp = NULL;
+
+  /* Allocate bias for both standard and extended ICA */
+  bias = (double *)calloc(nchan, sizeof(double));
+  if (!bias) {
+    free(b_y); free(x); free(Xb_data); free(tmp_data); free(timeperm);
+    fprintf(stderr, "Error: Failed to allocate memory for bias\n");
+    return;
+  }
+
+  if (extended) {
+    signs = (double *)calloc(nmatrix, sizeof(double));
+    oldsigns = (double *)calloc(nmatrix, sizeof(double));
+    kk = (double *)calloc(nchan, sizeof(double));
+    m2 = (double *)malloc(nchan * sizeof(double));
+    b_newdata = (double *)malloc(kurt_data_size * sizeof(double));
+    m2_tmp = (double *)malloc(kurt_data_size * sizeof(double));
+    rp = (double *)malloc(kurt_samples * sizeof(double));
+
+    if (!signs || !oldsigns || !kk || !m2 || !b_newdata || !m2_tmp || !rp) {
+      free(b_y); free(x); free(Xb_data); free(tmp_data); free(timeperm);
+      free(bias); free(signs); free(oldsigns); free(kk); free(m2);
+      free(b_newdata); free(m2_tmp); free(rp);
+      fprintf(stderr, "Error: Failed to allocate memory for extended ICA\n");
+      return;
+    }
+  }
 
   /* Initialize arrays to zero to match static array behavior */
   memset(Xb_data, 0, xb_size * sizeof(double));
   memset(tmp_data, 0, xb_size * sizeof(double));
   if (!b_y || !x || !Xb_data || !tmp_data || !timeperm) {
     free(b_y); free(x); free(Xb_data); free(tmp_data); free(timeperm);
+    free(bias);
+    if (extended) {
+      free(signs); free(oldsigns); free(kk); free(m2);
+      free(b_newdata); free(m2_tmp); free(rp);
+    }
     fprintf(stderr, "Error: Failed to allocate memory in runica_simple\n");
     return;
   }
@@ -2069,6 +2278,8 @@ void runica_simple(double *data, double *weights, double *sphere,
   double oldchange;
   double re;
   double weights_re_tmp;
+  double anneal;
+  double extblocks;
   int iidx[nchan];
   int ar;
   int br;
@@ -2078,6 +2289,8 @@ void runica_simple(double *data, double *weights, double *sphere,
   int k;
   int step;
   int xpageoffset;
+  int ext_on;
+  int signcount;
   signed char startweights[nmatrix];
   if (!isInitialized_runica_simple) {
     runica_simple_initialize();
@@ -2183,16 +2396,45 @@ void runica_simple(double *data, double *weights, double *sphere,
     }
   }
   memcpy(&data[0], &x[0], ndata * sizeof(double));
+  /* Store sphered data in b_y for kurtosis sampling in extended ICA */
+  memcpy(&b_y[0], &x[0], ndata * sizeof(double));
   /*  Init weights */
   memset(&weights[0], 0, nmatrix * sizeof(double));
-  /*  Extended ICA configuration */
-  /*  Training constants */
-  lrate = 0.00018755035531556522;
   for (k = 0; k < nchan; k++) {
     weights[k + (k  * nchan)] = 1.0;
-    rowmeans[k] = 0.0;
   }
-  /*  Signs init for extended ICA */
+
+  /*  Extended ICA configuration */
+  anneal = 0.9;
+  ext_on = 0;
+  extblocks = 0.0;
+  signcount = 0;
+  if (extended) {
+    ext_on = 1;
+    extblocks = 1.0;
+    anneal = 0.98;
+
+    /* Signs init for extended ICA */
+    for (i = 0; i < nchan; i++) {
+      rowmeans[i] = 1.0;  /* Will be copied to diagonal of signs */
+    }
+    rowmeans[0] = -1.0;  /* First sign is negative */
+
+    /* Initialize signs as diagonal matrix */
+    for (i = 0; i < nchan; i++) {
+      signs[i + i * nchan] = rowmeans[i];
+    }
+  } else {
+    /* Standard ICA - initialize rowmeans to zero */
+    for (k = 0; k < nchan; k++) {
+      rowmeans[k] = 0.0;
+    }
+  }
+
+  /*  Training constants */
+  lrate = 0.00018755035531556522;
+
+  /* Initialize weight tracking arrays */
   for (i = 0; i < nmatrix; i++) {
     k = (int)weights[i];
     startweights[i] = (signed char)k;
@@ -2223,7 +2465,7 @@ void runica_simple(double *data, double *weights, double *sphere,
           br = j  * nchan;
           for (xpageoffset = 0; xpageoffset < nchan; xpageoffset++) {
             Xb_data[xpageoffset + nchan * j] =
-                data[xpageoffset + (((int)timeperm[idx + j] - 1)  * nchan)];
+                b_y[xpageoffset + (((int)timeperm[idx + j] - 1)  * nchan)];
             tmp_data[br + xpageoffset] = 0.0;
           }
           for (k = 0; k < nchan; k++) {
@@ -2237,49 +2479,126 @@ void runica_simple(double *data, double *weights, double *sphere,
         }
         for (i = 0; i < block; i++) {
           for (k = 0; k < nchan; k++) {
-            U[k + (i  * nchan)] = tmp_data[k + nchan * i] + rowmeans[k];
+            U[k + (i  * nchan)] = tmp_data[k + nchan * i] + bias[k];
           }
         }
-        for (k = 0; k < blocksize; k++) {
-          b_x[k] = 1.0 - 2.0 * (1.0 / (exp(-U[k]) + 1.0));
-        }
-        for (i = 0; i < nchan; i++) {
-          for (k = 0; k < nchan; k++) {
-            weights_re_tmp = 0.0;
-            for (ar = 0; ar < block; ar++) {
-              idx = ar  * nchan;
-              weights_re_tmp += b_x[i + idx] * U[k + idx];
+        if (ext_on != 0) {
+          /* Extended ICA: tanh activation */
+          double b_signs[blocksize];
+          double BI_ext[nmatrix];
+          double x_t[nchan * block];
+
+          for (k = 0; k < blocksize; k++) {
+            b_x[k] = tanh(U[k]);
+          }
+
+          /* Apply signs: b_signs = signs * b_x */
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < block; k++) {
+              int b_i = k * nchan;
+              xpageoffset = i + b_i;
+              x_t[k + block * i] = U[xpageoffset];
+              weights_re_tmp = 0.0;
+              for (ar = 0; ar < nchan; ar++) {
+                weights_re_tmp += signs[i + (ar * nchan)] * b_x[ar + b_i];
+              }
+              b_signs[xpageoffset] = weights_re_tmp;
             }
-            idx = i + (k  * nchan);
-            dW[idx] = weights_re_tmp + (double)BI[idx];
           }
-        }
-        for (i = 0; i < nmatrix; i++) {
-          dW[i] *= lrate;
-        }
-        for (i = 0; i < nchan; i++) {
-          for (k = 0; k < nchan; k++) {
-            weights_re_tmp = 0.0;
-            for (ar = 0; ar < nchan; ar++) {
-              weights_re_tmp += dW[i + (ar  * nchan)] * weights[ar + (k  * nchan)];
+
+          /* Weight update: dW = lrate * (BI - b_signs * U' - U * U') */
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < nchan; k++) {
+              weights_re_tmp = 0.0;
+              muj = 0.0;
+              for (ar = 0; ar < block; ar++) {
+                int b_i = ar * nchan;
+                double b_dW_tmp = x_t[ar + block * k];
+                int idx_tmp = i + b_i;
+                weights_re_tmp += b_signs[idx_tmp] * b_dW_tmp;
+                muj += U[idx_tmp] * b_dW_tmp;
+              }
+              int idx_tmp = i + (k * nchan);
+              dW[idx_tmp] = muj;
+              BI_ext[idx_tmp] = (double)BI[idx_tmp] - weights_re_tmp;
             }
-            idx = i + (k  * nchan);
-            d_weights[idx] = weights[idx] + weights_re_tmp;
           }
-        }
-        memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
-        for (i = 0; i < nchan; i++) {
-          for (k = 0; k < block; k++) {
-            U[k + block * i] = b_x[i + (k  * nchan)];
+
+          for (i = 0; i < nmatrix; i++) {
+            BI_ext[i] = lrate * (BI_ext[i] - dW[i]);
           }
-        }
-        for (j = 0; j < nchan; j++) {
-          xpageoffset = j * block;
-          weights_re_tmp = U[xpageoffset];
-          for (k = 0; k < block - 1; k++) {
-            weights_re_tmp += U[(xpageoffset + k) + 1];
+
+          /* Apply weight update */
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < nchan; k++) {
+              weights_re_tmp = 0.0;
+              for (ar = 0; ar < nchan; ar++) {
+                weights_re_tmp += BI_ext[i + (ar * nchan)] * weights[ar + (k * nchan)];
+              }
+              idx = i + (k * nchan);
+              d_weights[idx] = weights[idx] + weights_re_tmp;
+            }
           }
-          rowmeans[j] += lrate * weights_re_tmp;
+          memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
+
+          /* Bias update: bias += lrate * sum(-2 * Y) */
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < block; k++) {
+              x_t[k + block * i] = -2.0 * b_x[i + (k * nchan)];
+            }
+          }
+          memcpy(&b_x[0], &x_t[0], blocksize * sizeof(double));
+          for (j = 0; j < nchan; j++) {
+            xpageoffset = j * block;
+            weights_re_tmp = b_x[xpageoffset];
+            for (k = 0; k < block - 1; k++) {
+              weights_re_tmp += b_x[(xpageoffset + k) + 1];
+            }
+            bias[j] += lrate * weights_re_tmp;
+          }
+        } else {
+          /* Standard ICA: logistic activation */
+          for (k = 0; k < blocksize; k++) {
+            b_x[k] = 1.0 - 2.0 * (1.0 / (exp(-U[k]) + 1.0));
+          }
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < nchan; k++) {
+              weights_re_tmp = 0.0;
+              for (ar = 0; ar < block; ar++) {
+                idx = ar * nchan;
+                weights_re_tmp += b_x[i + idx] * U[k + idx];
+              }
+              idx = i + (k * nchan);
+              dW[idx] = weights_re_tmp + (double)BI[idx];
+            }
+          }
+          for (i = 0; i < nmatrix; i++) {
+            dW[i] *= lrate;
+          }
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < nchan; k++) {
+              weights_re_tmp = 0.0;
+              for (ar = 0; ar < nchan; ar++) {
+                weights_re_tmp += dW[i + (ar * nchan)] * weights[ar + (k * nchan)];
+              }
+              idx = i + (k * nchan);
+              d_weights[idx] = weights[idx] + weights_re_tmp;
+            }
+          }
+          memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
+          for (i = 0; i < nchan; i++) {
+            for (k = 0; k < block; k++) {
+              U[k + block * i] = b_x[i + (k * nchan)];
+            }
+          }
+          for (j = 0; j < nchan; j++) {
+            xpageoffset = j * block;
+            weights_re_tmp = U[xpageoffset];
+            for (k = 0; k < block - 1; k++) {
+              weights_re_tmp += U[(xpageoffset + k) + 1];
+            }
+            bias[j] += lrate * weights_re_tmp;
+          }
         }
         for (k = 0; k < nmatrix; k++) {
           dW[k] = fabs(weights[k]);
@@ -2317,6 +2636,80 @@ void runica_simple(double *data, double *weights, double *sphere,
           exitg2 = true;
         } else {
           /*  Extended sign updates by kurtosis */
+          if ((ext_on != 0) && (extblocks > 0.0) &&
+              (rt_remd_snf((double)(t + 1), extblocks) == 0.0)) {
+            boolean_T p;
+            boolean_T exitg3;
+            c_rand(rp, kurt_samples);
+            for (k = 0; k < kurt_samples; k++) {
+              double d = trunc(rp[k] * (double)samples);
+              rp[k] = d;
+              if (d == 0.0) {
+                rp[k] = 1.0;
+              }
+              for (i = 0; i < nchan; i++) {
+                b_newdata[i + (k * nchan)] = b_y[i + (((int)rp[k] - 1) * nchan)];
+              }
+              for (i = 0; i < nchan; i++) {
+                double d_tmp = 0.0;
+                for (int coffset_tmp = 0; coffset_tmp < nchan; coffset_tmp++) {
+                  d_tmp += weights[i + (coffset_tmp * nchan)] *
+                           b_newdata[coffset_tmp + (k * nchan)];
+                }
+                m2_tmp[k + kurt_samples * i] = d_tmp;
+              }
+            }
+            for (k = 0; k < kurt_data_size; k++) {
+              double d = m2_tmp[k];
+              b_newdata[k] = d * d;
+            }
+            b_mean(b_newdata, rowmeans, nchan, kurt_samples);
+            for (k = 0; k < nchan; k++) {
+              double d = rowmeans[k];
+              m2[k] = d * d;
+            }
+            for (k = 0; k < kurt_data_size; k++) {
+              b_newdata[k] = rt_powd_snf(m2_tmp[k], 4.0);
+            }
+            b_mean(b_newdata, rowmeans, nchan, kurt_samples);
+            for (k = 0; k < nchan; k++) {
+              double d = 0.5 * kk[k] + 0.5 * (rowmeans[k] / m2[k] - 3.0);
+              kk[k] = d;
+              if (rtIsNaN(d + 0.02)) {
+                rowmeans[k] = rtNaN;
+              } else if (d + 0.02 < 0.0) {
+                rowmeans[k] = -1.0;
+              } else {
+                rowmeans[k] = (d + 0.02 > 0.0);
+              }
+            }
+            memset(&signs[0], 0, nmatrix * sizeof(double));
+            for (xpageoffset = 0; xpageoffset < nchan; xpageoffset++) {
+              signs[xpageoffset + (xpageoffset * nchan)] =
+                  rowmeans[xpageoffset];
+            }
+            p = true;
+            k = 0;
+            exitg3 = false;
+            while ((!exitg3) && (k < nmatrix)) {
+              if (!(signs[k] == oldsigns[k])) {
+                p = false;
+                exitg3 = true;
+              } else {
+                k++;
+              }
+            }
+            if (p) {
+              signcount++;
+            } else {
+              signcount = 0;
+            }
+            memcpy(&oldsigns[0], &signs[0], nmatrix * sizeof(double));
+            if (signcount >= 25) {
+              extblocks *= 2.0;
+              signcount = 0;
+            }
+          }
           t++;
         }
       }
@@ -2357,7 +2750,7 @@ void runica_simple(double *data, double *weights, double *sphere,
         fflush(stdout);
         /*  Anneal */
         if (muj > 60.0) {
-          lrate *= 0.9;
+          lrate *= anneal;
           memcpy(&olddelta[0], &dW[0], nmatrix * sizeof(double));
           oldchange = b_dW;
         } else if (step == 1) {
@@ -2495,6 +2888,20 @@ void runica_simple(double *data, double *weights, double *sphere,
   free(Xb_data);
   free(tmp_data);
   free(timeperm);
+
+  /* Free bias (used by both standard and extended ICA) */
+  free(bias);
+
+  /* Free extended ICA arrays */
+  if (extended) {
+    free(signs);
+    free(oldsigns);
+    free(kk);
+    free(m2);
+    free(b_newdata);
+    free(m2_tmp);
+    free(rp);
+  }
 }
 
 void runica_simple_initialize(void)

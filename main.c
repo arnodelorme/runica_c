@@ -22,11 +22,16 @@ int main(int argc, char *argv[])
     int i;
     int nchan = NCHANS;
     int npoints = NPOINTS;
+    boolean_T extended = true;  /* Default: extended ICA enabled */
 
     /* Parse command line arguments */
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph> [nchans] [npoints]\n", argv[0]);
-        fprintf(stderr, "Example: %s data/eeglab_data.fdt data/eeglab_data.wts_darwin data/eeglab_data.sph_darwin 32 30504\n", argv[0]);
+        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph> [nchans] [npoints] [extended]\n", argv[0]);
+        fprintf(stderr, "Example: %s data/eeglab_data.fdt data/eeglab_data.wts_darwin data/eeglab_data.sph_darwin 32 30504 1\n", argv[0]);
+        fprintf(stderr, "\nOptional parameters:\n");
+        fprintf(stderr, "  nchans:   Number of channels (default: %d)\n", NCHANS);
+        fprintf(stderr, "  npoints:  Number of time points (default: %d)\n", NPOINTS);
+        fprintf(stderr, "  extended: 1=extended ICA (tanh), 0=standard ICA (logistic) (default: 1)\n");
         return 1;
     }
 
@@ -41,6 +46,9 @@ int main(int argc, char *argv[])
     if (argc >= 6) {
         npoints = atoi(argv[5]);
     }
+    if (argc >= 7) {
+        extended = (boolean_T)atoi(argv[6]);
+    }
 
     /* Declare VLAs for weights and sphere matrices */
     const int nmatrix = nchan * nchan;
@@ -54,6 +62,7 @@ int main(int argc, char *argv[])
     printf("Input file: %s\n", input_file);
     printf("Channels: %d\n", nchan);
     printf("Data points: %d\n", npoints);
+    printf("Mode: %s ICA\n", extended ? "Extended" : "Standard");
     printf("\n");
 
     /* Allocate memory */
@@ -97,7 +106,7 @@ int main(int argc, char *argv[])
     runica_simple_initialize();
 
     printf("Running ICA...\n");
-    runica_simple(data_double, weights, sphere, nchan, npoints);
+    runica_simple(data_double, weights, sphere, nchan, npoints, extended);
 
     printf("ICA completed successfully!\n\n");
 
