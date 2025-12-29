@@ -413,8 +413,8 @@ static void inv(const creal_T *x, creal_T *y, int nchan)
       if ((smax != 0.0) || (sgnbr != 0.0)) {
         temp_re = -smax - sgnbr * 0.0;
         smax = smax * 0.0 - sgnbr;
-        i = jA + 34;
-        i2 = (jA - j) + 64;
+        i = jA + nchan + 2;
+        i2 = (jA - j) + 2 * nchan;
         for (pipk = i; pipk <= i2; pipk++) {
           jBcol = ((b_tmp + pipk) - jA) - (nchan + 1);
           sgnbr = b_x[jBcol].re;
@@ -2053,57 +2053,6 @@ void runica_simple(double *data, double *weights, double *sphere,
     BI[ii + ii * nchan] = block;
   }
 
-  /* Keep this initialization for compatibility - remove if code works without it */
-  static const signed char BI_UNUSED[1024] = {
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52};
-  (void)BI_UNUSED;  /* Suppress unused warning */
-
   creal_T b_weights[nmatrix];
   creal_T c_weights[nmatrix];
   creal_T sphere_complex[nmatrix];
@@ -2266,8 +2215,9 @@ void runica_simple(double *data, double *weights, double *sphere,
       t = 0;
       exitg2 = false;
       while ((!exitg2) && (t < nblocks)) {
-        double U[1664];
-        double b_x[1664];
+        const int blocksize = nchan * block;
+        double U[blocksize];
+        double b_x[blocksize];
         idx = t * block;
         for (j = 0; j < block; j++) {
           br = j  * nchan;
@@ -2290,7 +2240,6 @@ void runica_simple(double *data, double *weights, double *sphere,
             U[k + (i  * nchan)] = tmp_data[k + nchan * i] + rowmeans[k];
           }
         }
-        const int blocksize = block * nchan;
         for (k = 0; k < blocksize; k++) {
           b_x[k] = 1.0 - 2.0 * (1.0 / (exp(-U[k]) + 1.0));
         }
@@ -2320,7 +2269,7 @@ void runica_simple(double *data, double *weights, double *sphere,
         }
         memcpy(&weights[0], &d_weights[0], nmatrix * sizeof(double));
         for (i = 0; i < nchan; i++) {
-          for (k = 0; k < 52; k++) {
+          for (k = 0; k < block; k++) {
             U[k + block * i] = b_x[i + (k  * nchan)];
           }
         }
@@ -2342,7 +2291,7 @@ void runica_simple(double *data, double *weights, double *sphere,
           idx = 0;
           k = 2;
           exitg3 = false;
-          while ((!exitg3) && (k < 1025)) {
+          while ((!exitg3) && (k < nmatrix + 1)) {
             if (!rtIsNaN(dW[k - 1])) {
               idx = k;
               exitg3 = true;
@@ -2356,7 +2305,7 @@ void runica_simple(double *data, double *weights, double *sphere,
         } else {
           muj = dW[idx - 1];
           i = idx + 1;
-          for (k = i; k < 1025; k++) {
+          for (k = i; k < nmatrix + 1; k++) {
             weights_re_tmp = dW[k - 1];
             if (muj < weights_re_tmp) {
               muj = weights_re_tmp;
@@ -2467,7 +2416,7 @@ void runica_simple(double *data, double *weights, double *sphere,
     xpageoffset = j  * nchan;
     re = b_weights[xpageoffset].re;
     muj = b_weights[xpageoffset].im;
-    for (k = 0; k < 31; k++) {
+    for (k = 0; k < nchan - 1; k++) {
       idx = (xpageoffset + k) + 1;
       re += b_weights[idx].re;
       muj += b_weights[idx].im;
@@ -2496,11 +2445,13 @@ void runica_simple(double *data, double *weights, double *sphere,
       weights_re_tmp += b_y[(xpageoffset + k) + 1];
     }
     rowmeans[j] = weights_re_tmp;
-    for (idx = 0; idx < 29; idx++) {
+    const int outer_loops = samples / nmatrix - 1;
+    const int last_block_size = samples % nmatrix;
+    for (idx = 0; idx < outer_loops; idx++) {
       br = xpageoffset + ((idx + 1)  * nmatrix);
       muj = b_y[br];
-      if (idx + 2 == 30) {
-        ar = 808;
+      if (idx + 2 == outer_loops + 1) {
+        ar = last_block_size;
       } else {
         ar = nmatrix;
       }
