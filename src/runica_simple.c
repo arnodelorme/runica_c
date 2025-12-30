@@ -560,12 +560,12 @@ static void b_mean(const double *x, double *y, int nchan, int samples)
       bsum += x[(xpageoffset + k) + 1];
     }
     y[xi] = bsum;
-    for (ib = 0; ib < (samples / 1024 - 1); ib++) {
+    for (ib = 0; ib < (samples - 1) / 1024; ib++) {
       int hi;
       int xblockoffset;
       xblockoffset = xpageoffset + ((ib + 1) << 10);
       bsum = x[xblockoffset];
-      if (ib + 2 == samples / 1024) {
+      if (ib + 2 == (samples + 1023) / 1024) {
         hi = samples % 1024;
       } else {
         hi = 1024;
@@ -958,6 +958,85 @@ static void sort(creal_T *x, int *idx, int nchan)
   }
 }
 
+/* Sort double precision array in descending order */
+static void sort_double(double *x, int *idx, int nchan)
+{
+  double xwork[nchan];
+  int iwork[nchan];
+  int i;
+  int k;
+  int pEnd;
+  int qEnd;
+
+  /* Initialize pairwise */
+  for (k = 0; k <= (nchan - 2); k += 2) {
+    if (x[k] >= x[k + 1]) {
+      idx[k] = k + 1;
+      idx[k + 1] = k + 2;
+    } else {
+      idx[k] = k + 2;
+      idx[k + 1] = k + 1;
+    }
+  }
+
+  /* Merge sort */
+  i = 2;
+  while (i < nchan) {
+    int i2;
+    int j;
+    i2 = i << 1;
+    j = 1;
+    for (pEnd = i + 1; pEnd < (nchan + 1); pEnd = qEnd + i) {
+      int kEnd;
+      int p;
+      int q;
+      p = j;
+      q = pEnd;
+      qEnd = j + i2;
+      k = 0;
+      kEnd = qEnd - j;
+      while (k + 1 <= kEnd) {
+        int b_i;
+        int i1;
+        b_i = idx[p - 1];
+        i1 = idx[q - 1];
+        if (x[b_i - 1] >= x[i1 - 1]) {
+          iwork[k] = b_i;
+          p++;
+          if (p == pEnd) {
+            while (q < qEnd) {
+              k++;
+              iwork[k] = idx[q - 1];
+              q++;
+            }
+          }
+        } else {
+          iwork[k] = i1;
+          q++;
+          if (q == qEnd) {
+            while (p < pEnd) {
+              k++;
+              iwork[k] = idx[p - 1];
+              p++;
+            }
+          }
+        }
+        k++;
+      }
+      for (k = 0; k < kEnd; k++) {
+        idx[(j + k) - 1] = iwork[k];
+      }
+      j = qEnd;
+    }
+    i = i2;
+  }
+
+  /* Reorder by indices */
+  memcpy(&xwork[0], &x[0], (unsigned int)nchan * sizeof(double));
+  for (k = 0; k < nchan; k++) {
+    x[k] = xwork[idx[k] - 1];
+  }
+}
 
 static boolean_T sortLE(const creal_T *v, int idx1, int idx2)
 {
@@ -2853,9 +2932,14 @@ void runica_simple(double *data, double *weights, double *sphere,
       }
       rowmeans[j] += muj;
     }
+    /* Save variance (sum of squared projections) and eigenvalue sum */
+    double variance = rowmeans[j];
+    double eig_sum_re = y[j].re;  /* Save before overwriting */
+    double eig_sum_im = y[j].im;
+    /* Compute normalized y (used later for component sign) */
     weights_re_tmp = rowmeans[j];
-    muj = y[j].re * weights_re_tmp;
-    b_dW = y[j].im * weights_re_tmp;
+    muj = eig_sum_re * weights_re_tmp;
+    b_dW = eig_sum_im * weights_re_tmp;
     if (b_dW == 0.0) {
       re = muj / ndata - 1.0;
       muj = 0.0;
@@ -2868,8 +2952,10 @@ void runica_simple(double *data, double *weights, double *sphere,
     }
     y[j].re = re;
     y[j].im = muj;
+    /* Final rowmeans = sum(inv^2) * variance / (ndata-1) (for sorting) */
+    rowmeans[j] = eig_sum_re * variance / (double)(ndata - 1);
   }
-  sort(y, iidx, nchan);
+  sort_double(rowmeans, iidx, nchan);  /* Sort by variance, not eigenvalues */
   for (i = 0; i < nchan; i++) {
     idx = i  * nchan;
     for (k = 0; k < nchan; k++) {
