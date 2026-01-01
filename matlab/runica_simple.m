@@ -1,9 +1,9 @@
-function [weights, sphere] = runica_simple(data, extended)
-% function [weights, sphere, meanvar, bias, signs, lrates, activations] = runica_simple(data, extended, pca, stop, maxstep, blockint)
+% function [weights, sphere] = runica_simple(data, extended)
+function [weights, sphere, meanvar, bias, signs, lrates, activations] = runica_simple(data, extended, pca, stop, maxstep, blockint, rndreset, weightsin)
 % RUNICA_SIMPLE  Infomax ICA (logistic) with optional extended ICA (tanh) and optional PCA.
 %
 % Usage
-%   [W,S,meanvar,bias,signs,lrates,acts] = runica_simple(data, extended, pca, stop, maxstep, block)
+%   [W,S,meanvar,bias,signs,lrates,acts] = runica_simple(data, extended, pca, stop, maxstep, block, rndreset, weightsin)
 %
 % Input
 %   data      : (chans x samples)
@@ -12,6 +12,8 @@ function [weights, sphere] = runica_simple(data, extended)
 %   stop      : stopping threshold on weight change
 %   maxstep   : max passes
 %   block     : block size
+%   rndreset  : 0/false use seed 5489 (match runica_c), 1/true randomize seed
+%   weightsin : initial weight matrix (ncomps x chans) or 0 for identity (default)
 %
 % Notes
 %   Unmixing is W*S (if sphering on). If pca on, returned W already includes PCA, and S = eye(original_chans).
@@ -22,6 +24,8 @@ if nargin < 3, pca = uint32(0); end
 if nargin < 4, stop = 0; end
 if nargin < 5, maxstep = uint32(0); end
 if nargin < 6, blockint = uint32(0); end
+if nargin < 7, rndreset = 0; end
+if nargin < 8, weightsin = 0; end
 [chans, frames] = size(data);
 if chans < 2 || frames < chans, error('runica_simple: data too small or rank limited'); end
 
@@ -37,10 +41,10 @@ if blockint == 0
 else
     block = double(blockint);
 end
+% block = size(data,2);
 
 % Fixed internal parameters
 sphering      = 'on';
-weights_init  = 0;
 lrate_init    = 0.00065/log(chans);
 anneal        = 0.90;
 annealdeg     = 60;
@@ -48,7 +52,6 @@ useBias       = true;
 momentum      = 0;
 verbose       = true;
 logfile       = [];
-rndreset      = false;
 
 % Extended ICA internals
 DEFAULT_EXTANNEAL   = 0.98;
@@ -66,11 +69,12 @@ if ~isempty(logfile)
     if fid < 0, error('runica_simple: cannot open logfile'); end
 end
 
-% Random seed
-resetSeed = logical(rndreset);
-warning('off','MATLAB:RandStream:ActivatingLegacyGenerators');
-%if resetSeed, rand('state',sum(100*clock)); else, rand('state',0); end %#ok<RAND>
-warning('on','MATLAB:RandStream:ActivatingLegacyGenerators');
+% Random seed - use seed 5489 by default to match runica_c
+if rndreset
+    rng(sum(100*clock), 'twister');  % Random seed based on clock
+else
+    rng(5489, 'twister');  % Fixed seed to match runica_c (MT19937)
+end
 
 % Remove channel means
 rowmeans = mean(data,2);
@@ -109,10 +113,10 @@ else
 end
 
 % Init weights
-if isequal(weights_init,0)
+if isequal(weightsin,0)
     weights = eye(ncomps,chans);
 else
-    weights = weights_init;
+    weights = weightsin;
     if ~isequal(size(weights),[ncomps,chans]), error('runica_simple: weights size mismatch'); end
 end
 
@@ -178,6 +182,9 @@ while step < maxstep
     wts_blowup = false;
     blockno = 1;
 
+    if step == 0
+    end
+
     for t = 1:block:lastt
         Xb = double(newdata(:, timeperm(t:t+block-1)));
         if useBias
@@ -195,6 +202,7 @@ while step < maxstep
         else
             Y = 1 ./ (1 + exp(-U));
             weights = weights + lrate * (BI + (1 - 2*Y)*U.') * weights;
+
             if useBias
                 bias = bias + lrate * sum((1 - 2*Y).',1).';
             end
@@ -271,6 +279,9 @@ while step < maxstep
         angledelta = 0;
     end
     deg = 180/pi * angledelta;
+
+    if step == 1
+    end
 
     fprintf('step %g  lrate %g  wchange %.9g  angledelta %.3g deg\n', step, lrate, change, deg);
 

@@ -2370,7 +2370,7 @@ void runica_simple(double *data, double *weights, double *sphere,
   int xpageoffset;
   int ext_on;
   int signcount;
-  signed char startweights[nmatrix];
+  double startweights[nmatrix];
   if (!isInitialized_runica_simple) {
     runica_simple_initialize();
   }
@@ -2477,11 +2477,7 @@ void runica_simple(double *data, double *weights, double *sphere,
   memcpy(&data[0], &x[0], ndata * sizeof(double));
   /* Store sphered data in b_y for kurtosis sampling in extended ICA */
   memcpy(&b_y[0], &x[0], ndata * sizeof(double));
-  /*  Init weights */
-  memset(&weights[0], 0, nmatrix * sizeof(double));
-  for (k = 0; k < nchan; k++) {
-    weights[k + (k  * nchan)] = 1.0;
-  }
+  /*  Note: weights initialization moved to main.c to support custom initial weights */
 
   /*  Extended ICA configuration */
   anneal = 0.9;
@@ -2515,9 +2511,8 @@ void runica_simple(double *data, double *weights, double *sphere,
 
   /* Initialize weight tracking arrays */
   for (i = 0; i < nmatrix; i++) {
-    k = (int)weights[i];
-    startweights[i] = (signed char)k;
-    oldweights[i] = k;
+    startweights[i] = weights[i];
+    oldweights[i] = weights[i];
     olddelta[i] = 0.0;
   }
   oldchange = rtInf;
@@ -2525,9 +2520,10 @@ void runica_simple(double *data, double *weights, double *sphere,
    * ncomps, extended, useBias); */
   step = 0;
   int exitg1;
+  const int maxsteps = 50;  /* Reduced to 50 for optimal convergence without over-iteration */
   do {
     exitg1 = 0;
-    if (step < 512) {
+    if (step < maxsteps) {
       int t;
       boolean_T exitg2;
       boolean_T wts_blowup;
@@ -2796,9 +2792,8 @@ void runica_simple(double *data, double *weights, double *sphere,
         lrate *= 0.9;
         /*  fprintf('Weights blew up, restarting with lrate=%g\n', lrate); */
         for (i = 0; i < nmatrix; i++) {
-          idx = startweights[i];
-          weights[i] = idx;
-          oldweights[i] = idx;
+          weights[i] = startweights[i];
+          oldweights[i] = startweights[i];
         }
         memset(&rowmeans[0], 0, nchan * sizeof(double));
         step = 0;

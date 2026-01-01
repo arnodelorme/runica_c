@@ -19,6 +19,7 @@ int main(int argc, char *argv[])
     const char *input_file;
     const char *weights_file;
     const char *sphere_file;
+    const char *weightsin_file = NULL;
     int i;
     int nchan = NCHANS;
     int npoints = NPOINTS;
@@ -26,12 +27,13 @@ int main(int argc, char *argv[])
 
     /* Parse command line arguments */
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph> [nchans] [npoints] [extended]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <input.fdt> <output.wts> <output.sph> [nchans] [npoints] [extended] [weightsin.wts]\n", argv[0]);
         fprintf(stderr, "Example: %s data/eeglab_data.fdt data/eeglab_data.wts_darwin data/eeglab_data.sph_darwin 32 30504 1\n", argv[0]);
         fprintf(stderr, "\nOptional parameters:\n");
-        fprintf(stderr, "  nchans:   Number of channels (default: %d)\n", NCHANS);
-        fprintf(stderr, "  npoints:  Number of time points (default: %d)\n", NPOINTS);
-        fprintf(stderr, "  extended: 1=extended ICA (tanh), 0=standard ICA (logistic) (default: 1)\n");
+        fprintf(stderr, "  nchans:     Number of channels (default: %d)\n", NCHANS);
+        fprintf(stderr, "  npoints:    Number of time points (default: %d)\n", NPOINTS);
+        fprintf(stderr, "  extended:   1=extended ICA (tanh), 0=standard ICA (logistic) (default: 1)\n");
+        fprintf(stderr, "  weightsin:  Initial weights file (default: identity matrix)\n");
         return 1;
     }
 
@@ -48,6 +50,9 @@ int main(int argc, char *argv[])
     }
     if (argc >= 7) {
         extended = (boolean_T)atoi(argv[6]);
+    }
+    if (argc >= 8) {
+        weightsin_file = argv[7];
     }
 
     /* Declare VLAs for weights and sphere matrices */
@@ -100,6 +105,35 @@ int main(int argc, char *argv[])
         data_double[i] = (double)data_float[i];
     }
     free(data_float);
+
+    /* Initialize weights matrix */
+    if (weightsin_file != NULL) {
+        /* Load initial weights from file */
+        printf("Loading initial weights from: %s\n", weightsin_file);
+        fp = fopen(weightsin_file, "rb");
+        if (!fp) {
+            fprintf(stderr, "Error: Cannot open initial weights file: %s\n", weightsin_file);
+            free(data_double);
+            return 1;
+        }
+
+        size_t nread_wts = fread(weights, sizeof(double), nmatrix, fp);
+        fclose(fp);
+
+        if (nread_wts != (size_t)nmatrix) {
+            fprintf(stderr, "Error: Expected %d weight values, read %zu\n", nmatrix, nread_wts);
+            free(data_double);
+            return 1;
+        }
+        printf("  Loaded %dx%d initial weight matrix\n", nchan, nchan);
+    } else {
+        /* Initialize weights to identity matrix */
+        printf("Initializing weights to identity matrix...\n");
+        memset(weights, 0, nmatrix * sizeof(double));
+        for (i = 0; i < nchan; i++) {
+            weights[i + i * nchan] = 1.0;
+        }
+    }
 
     /* Initialize and run ICA */
     printf("Initializing runica_simple...\n");
